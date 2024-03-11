@@ -9,6 +9,11 @@ apt install -y && apt update -y && apt upgrade -y && wget -q https://raw.githubu
 WGET LU TAII
 ```
 
+### UDP
+```
+wget https://raw.githubusercontent.com/YINNSTORE/VVIP/main/udp.sh
+```
+
 ### WORK DI OS
 - UBUNTU 20.04.05
 - DEBIAN 10 ( Disarankan )
