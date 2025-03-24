@@ -1,82 +1,83 @@
 #!/bin/bash
-NS=$(cat /etc/xray/dns)
-PUB=$(cat /etc/slowdns/server.pub)
+NS=$( cat /etc/xray/dns )
+PUB=$( cat /etc/slowdns/server.pub )
 domain=$(cat /etc/xray/domain)
-#color
 grenbo="\e[92;1m"
 NC='\e[0m'
-#install
-apt update && apt upgrade
-apt install python3 python3-pip git -y
-cd /usr/bin
-wget -q -O bot.zip "https://raw.githubusercontent.com/YINNSTORE/VVIP/main/bot/bot.zip"
-unzip bot.zip
-mv bot/* /usr/bin
-chmod +x /usr/bin/*
-rm -rf bot
-rm -rf bot.zip
-cd
-
-clear
-
-if [[ -d /etc/.cybervpn ]]; then
-rm -rf /etc/.cybervpn
-fi
-
-mkdir -p /etc/.cybervpn
-cd /etc/.cybervpn
-wget -q -O cybervpn.zip "https://raw.githubusercontent.com/YINNSTORE/VVIP/main/bot/cybervpn.zip"
-unzip cybervpn.zip &>/dev/null
+repo="https://raw.githubusercontent.com/YINNSTORE/VVIP/main/"
 
 function cekos() {
 source /etc/os-release
 echo "$ID $VERSION_ID"
 }
 
-if [[ $(cekos) == "ubuntu 20.04" || $(cekos) == "ubuntu 22.04" || $(cekos) == "debian 10" || $(cekos) == "debian 11" ]]; then
-pip3 install -r cybervpn/requirements.txt
-pip install pillow
-pip install speedtest-cli
-pip3 install aiohttp
-pip3 install paramiko
-elif [[ $(cekos) == "ubuntu 24.04" || $(cekos) == "ubuntu 24.10" ]]; then
-pip3 install telethon==1.24.0 --break-system-packages
-pip3 install requests --break-system-packages
-pip install pillow --break-system-packages
-pip install speedtest-cli --break-system-packages
-pip3 install aiohttp --break-system-packages
-pip3 install paramiko --break-system-packages
-else
-pip3 install -r cybervpn/requirements.txt --break-system-packages
-pip install pillow --break-system-packages
-pip install speedtest-cli --break-system-packages
-pip3 install aiohttp --break-system-packages
-pip3 install paramiko --break-system-packages
+dirbot="/etc/.telebot"
+
+if [[ -d $dirbot ]] &>/dev/null; then
+rm -rf $dirbot
 fi
+mkdir -p $dirbot
+
+with_virtual() {
+apt update
+apt install -y wget curl git
+apt install -y python3
+apt install -y python3-pip
+apt install -y python3.11-venv -y
+cd $dirbot
+python3 -m venv virtual
+source virtual/bin/activate
+wget -q -O kyt.zip "${repo}bot/kyt.zip"
+unzip kyt.zip
+pip3 install --upgrade pip
+pip3 install -r kyt/requirements.txt
+deactivate
+}
+
+with_no_virtual() {
+apt update
+apt install -y wget curl git
+apt install -y python3
+apt install -y python3-pip
+cd /etc/.telebot
+wget -q -O kyt.zip "${repo}bot/kyt.zip"
+unzip kyt.zip
+pip3 install -r kyt/requirements.txt
+}
+
+if [[ $(cekos) == "debian 12" || $(cekos) == "ubuntu 24.04" || $(cekos) == "ubuntu 24.10" ]]; then
+virtual_path="/etc/.telebot/virtual/bin/python3"
+with_virtual
+else
+virtual_path="/usr/bin/python3"
+with_no_virtual
+fi
+
+cd /usr/bin
+wget -q -O bot.zip "${repo}bot/bot.zip"
+unzip bot.zip
+chmod +x bot/*
+mv bot/* /usr/bin/
+rm -rf bot.zip
+rm -rf bot
+cd
+
 
 clear
 echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 echo -e " \e[1;97;101m             ADD BOT PANEL              \e[0m"
 echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-echo -e "${grenbo}Tutorial Creat Bot and ID Telegram${NC}"
-echo -e "${grenbo}[*] Creat Bot and Token Bot : @BotFather${NC}"
-echo -e "${grenbo}[*] Info Id Telegram : @MissRose_bot , perintah /info${NC}"
+echo -e "${grenbo}Tutorial Create Bot and ID Telegram${NC}"
+echo -e "${grenbo}[*] Create Bot and Token Bot : @BotFather${NC}"
+echo -e "${grenbo}[*] Info ID Telegram : @MissRose_bot , perintah /info${NC}"
 echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 read -e -p "[*] Input your Bot Token : " bottoken
-read -e -p "[*] Input Your Id Telegram : " admin
-read -e -p "[*] Input username Telegram : " user
-
-cat > /etc/.cybervpn/cybervpn/var.txt << END
-ADMIN="$admin"
-BOT_TOKEN="$bottoken"
-DOMAIN="$domain"
-DNS="$NS"
-PUB="$PUB"
-OWN="$user"
-SALDO="100000"
-END
-
-clear
+read -e -p "[*] Input Your ID Telegram :" admin
+echo -e BOT_TOKEN='"'$bottoken'"' >> $dirbot/kyt/var.txt
+echo -e ADMIN='"'$admin'"' >> $dirbot/kyt/var.txt
+echo -e DOMAIN='"'$domain'"' >> $dirbot/kyt/var.txt
+echo -e PUB='"'$PUB'"' >> $dirbot/kyt/var.txt
+echo -e HOST='"'$NS'"' >> $dirbot/kyt/var.txt
 
 if [[ -e /etc/systemd/system/kyt.service ]]; then
 systemctl stop kyt
@@ -90,18 +91,23 @@ Description=Simple Bot Telegram @yinnstore
 After=network.target
 
 [Service]
-WorkingDirectory=/etc/.cybervpn/
-ExecStart=/usr/bin/python3 -m cybervpn
+WorkingDirectory=/etc/.telebot
+ExecStart=$virtual_path -m kyt
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
 END
 
-systemctl enable kyt.service
-systemctl restart kyt.service
+systemctl daemon-reload
+systemctl start kyt
+systemctl enable kyt
+systemctl restart kyt
+
 cd /root
+
 rm -rf $0
+
 clear
 echo "Your Data Bot"
 echo -e "==============================="
