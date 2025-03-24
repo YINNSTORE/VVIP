@@ -932,7 +932,22 @@ clear
     enable_services
     restart_system
 }
-instal
+
+data_server=$(curl -v --insecure --silent https://google.com/ 2>&1 | grep Date | sed -e 's/< Date: //')
+date_list=$(date +"%Y-%m-%d" -d "$data_server")
+IP=$(wget -qO- ipv4.icanhazip.com)
+useexp=$(wget -qO- https://raw.githubusercontent.com/YINNSTORE/permision/main/reg | grep $IP | awk '{print $3}')
+if [[ $useexp == "lifetime" || $useexp == "Lifetime" ]]; then
+echo -ne
+else
+  if [[ $date_list < $useexp ]]; then
+   instal
+   else
+   echo -e "VPS anda tidak memiliki akses untuk script"
+   exit 0
+  fi
+fi
+
 echo ""
 history -c
 rm -rf /root/menu
