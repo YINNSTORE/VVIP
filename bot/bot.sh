@@ -39,6 +39,13 @@ pip install pillow
 pip install speedtest-cli
 pip3 install aiohttp
 pip3 install paramiko
+elif [[ $(cekos) == "ubuntu 24.04" || $(cekos) == "ubuntu 24.10" ]]; then
+pip3 install telethon==1.24.0 --break-system-packages
+pip3 install requests --break-system-packages
+pip install pillow --break-system-packages
+pip install speedtest-cli --break-system-packages
+pip3 install aiohttp --break-system-packages
+pip3 install paramiko --break-system-packages
 else
 pip3 install -r cybervpn/requirements.txt --break-system-packages
 pip install pillow --break-system-packages
