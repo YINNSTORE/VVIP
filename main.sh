@@ -792,6 +792,41 @@ function menu(){
     mv menu/* /usr/local/sbin
     rm -rf menu
     rm -rf menu.zip
+
+cat >/etc/systemd/system/limit-ip.service << EOF
+[Unit]
+Description=XD Tunnel service Limit IP
+ProjectAfter=network.target
+
+[Service]
+WorkingDirectory=/root
+ExecStart=/usr/local/sbin/limit.xd limit-ip
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat >/etc/systemd/system/quota.service << EOF
+[Unit]
+Description=XD Tunnel service Quota Xray
+ProjectAfter=network.target
+
+[Service]
+WorkingDirectory=/root
+ExecStart=/usr/local/sbin/limit.xd quota
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl enable limit-ip quota
+systemctl restart limit-ip quota
+
+wget -q -O install-rsyslog.sh "https://raw.githubusercontent.com/YINNSTORE/VVIP/main/files/install-rsyslog.sh"
+chmod +x install-rsyslog.sh
+./install-rsyslog.sh
 }
 
 # Membaut Default Menu 
