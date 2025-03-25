@@ -795,13 +795,18 @@ function menu(){
 
 cat >/etc/systemd/system/limit-ip.service << EOF
 [Unit]
-Description=XD Tunnel service Limit IP
-ProjectAfter=network.target
+Description=Limit IP Service XDTunnell
+Documentation=https://t.me/xdtunnell
+After=syslog.target network-online.target
 
 [Service]
-WorkingDirectory=/root
-ExecStart=/usr/local/sbin/limit.xd limit-ip
+User=root
+NoNewPrivileges=true
+ExecStart=/bin/bash /usr/local/sbin/limit.xd limit-ip
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="TERM=dumb"
 Restart=always
+RestartSec=5  # Disarankan tambahkan delay restart
 
 [Install]
 WantedBy=multi-user.target
@@ -809,13 +814,18 @@ EOF
 
 cat >/etc/systemd/system/quota.service << EOF
 [Unit]
-Description=XD Tunnel service Quota Xray
-ProjectAfter=network.target
+Description=Limit Quota Service XDTunnell
+Documentation=https://t.me/xdtunnell
+After=syslog.target network-online.target
 
 [Service]
-WorkingDirectory=/root
-ExecStart=/usr/local/sbin/limit.xd quota
+User=root
+NoNewPrivileges=true
+ExecStart=/bin/bash /usr/local/sbin/limit.xd user-quota
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="TERM=dumb"
 Restart=always
+RestartSec=5  # Disarankan tambahkan delay restart
 
 [Install]
 WantedBy=multi-user.target
