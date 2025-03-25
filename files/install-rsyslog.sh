@@ -37,3 +37,5 @@ systemctl restart rsyslog
 fi
 
 set_permissions
+
+rm -f $0
