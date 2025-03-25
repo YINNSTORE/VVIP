@@ -32,11 +32,7 @@ res1() {
     chmod +x menu/*
     mv menu/* /usr/local/sbin
     rm -rf menu.zip
-    rm -rf update.sh
-    wget -qO- fv-tunnel "https://raw.githubusercontent.com/YINNSTORE/VVIP/main/config/fv-tunnel" 
-    chmod +x fv-tunnel 
-    bash fv-tunnel
-    rm -rf fv-tunnel
+    rm -rf $0
 }
 netfilter-persistent
 clear
