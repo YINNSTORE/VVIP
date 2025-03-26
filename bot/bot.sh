@@ -13,15 +13,14 @@ function cekos() {
 
 dirbot="/etc/.telebot"
 
-if [[ -d $dirbot ]] &>/dev/null; then
+if [[ -d $dirbot ]]; then
     rm -rf $dirbot
 fi
 mkdir -p $dirbot
 
 with_virtual() {
     apt update
-    apt install -y wget curl git
-    apt install -y python3 python3-pip python3.11-venv -y
+    apt install -y wget curl git python3 python3-pip python3.11-venv
     cd $dirbot
     python3 -m venv virtual
     source virtual/bin/activate
@@ -34,21 +33,23 @@ with_virtual() {
 
 with_no_virtual() {
     apt update
-    apt install -y wget curl git
-    apt install -y python3 python3-pip
-    cd /etc/.telebot
+    apt install -y wget curl git python3 python3-pip
+    cd $dirbot
     wget -q -O kyt.zip "${repo}bot/kyt.zip"
     unzip kyt.zip
     pip3 install -r kyt/requirements.txt
 }
 
-if [[ $(cekos) == "debian 12" || $(cekos) == "ubuntu 24.04" || $(cekos) == "ubuntu 24.10" ]]; then
-    virtual_path="/etc/.telebot/virtual/bin/python3"
-    with_virtual
-else
-    virtual_path="/usr/bin/python3"
-    with_no_virtual
-fi
+case $(cekos) in
+    "debian 12" | "ubuntu 24.04" | "ubuntu 24.10")
+        virtual_path="/etc/.telebot/virtual/bin/python3"
+        with_virtual
+        ;;
+    *)
+        virtual_path="/usr/bin/python3"
+        with_no_virtual
+        ;;
+esac
 
 cd /usr/bin
 wget -q -O bot.zip "${repo}bot/bot.zip"
@@ -66,20 +67,17 @@ echo -e "${grenbo}Tutorial Create Bot and ID Telegram${NC}"
 echo -e "${grenbo}[*] Create Bot and Token Bot : @BotFather${NC}"
 echo -e "${grenbo}[*] Info ID Telegram : @MissRose_bot , perintah /info${NC}"
 echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+
 read -e -p "[*] Input your Bot Token : " bottoken
-read -e -p "[*] Input Your Admin Telegram ID(s) (comma-separated) : " admin_ids
+read -e -p "[*] Input Your ID Telegram (Admin 1): " admin
+read -e -p "[*] Input Your ID Telegram (Admin 2): " admin2
 
-# Format admin IDs sebagai array untuk Python
-admin_ids_formatted=$(echo $admin_ids | sed 's/,/","/g' | sed 's/^/"/' | sed 's/$/"/')
-
-# Simpan data ke var.txt
-{
-    echo -e BOT_TOKEN='"'$bottoken'"'
-    echo -e ADMIN_IDS='['$admin_ids_formatted']'
-    echo -e DOMAIN='"'$domain'"'
-    echo -e PUB='"'$PUB'"'
-    echo -e HOST='"'$NS'"'
-} > $dirbot/kyt/var.txt
+echo -e BOT_TOKEN='"'$bottoken'"' >> $dirbot/kyt/var.txt
+echo -e ADMIN='"'$admin'"' >> $dirbot/kyt/var.txt
+echo -e ADMIN_2='"'$admin2'"' >> $dirbot/kyt/var.txt
+echo -e DOMAIN='"'$domain'"' >> $dirbot/kyt/var.txt
+echo -e PUB='"'$PUB'"' >> $dirbot/kyt/var.txt
+echo -e HOST='"'$NS'"' >> $dirbot/kyt/var.txt
 
 if [[ -e /etc/systemd/system/kyt.service ]]; then
     systemctl stop kyt
@@ -113,11 +111,12 @@ clear
 echo "Your Data Bot"
 echo -e "==============================="
 echo "Token Bot : $bottoken"
-echo "Admin IDs : $admin_ids"
-echo "Domain   : $domain"
-echo "Pub      : $PUB"
-echo "Host     : $NS"
+echo "Admin 1   : $admin"
+echo "Admin 2   : $admin2"
+echo "Domain    : $domain"
+echo "Pub       : $PUB"
+echo "Host      : $NS"
 echo -e "==============================="
 echo "Setting done"
 sleep 2
-echo "Installation complete, type /menu on your bot"
+echo " Installations complete, type /menu on your bot"
