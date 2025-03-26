@@ -1,56 +1,53 @@
 #!/bin/bash
-NS=$( cat /etc/xray/dns )
-PUB=$( cat /etc/slowdns/server.pub )
+NS=$(cat /etc/xray/dns)
+PUB=$(cat /etc/slowdns/server.pub)
 domain=$(cat /etc/xray/domain)
 grenbo="\e[92;1m"
 NC='\e[0m'
 repo="https://raw.githubusercontent.com/YINNSTORE/VVIP/main/"
 
 function cekos() {
-source /etc/os-release
-echo "$ID $VERSION_ID"
+    source /etc/os-release
+    echo "$ID $VERSION_ID"
 }
 
 dirbot="/etc/.telebot"
 
 if [[ -d $dirbot ]] &>/dev/null; then
-rm -rf $dirbot
+    rm -rf $dirbot
 fi
 mkdir -p $dirbot
 
 with_virtual() {
-apt update
-apt install -y wget curl git
-apt install -y python3
-apt install -y python3-pip
-apt install -y python3.11-venv -y
-cd $dirbot
-python3 -m venv virtual
-source virtual/bin/activate
-wget -q -O kyt.zip "${repo}bot/kyt.zip"
-unzip kyt.zip
-pip3 install --upgrade pip
-pip3 install -r kyt/requirements.txt
-deactivate
+    apt update
+    apt install -y wget curl git
+    apt install -y python3 python3-pip python3.11-venv -y
+    cd $dirbot
+    python3 -m venv virtual
+    source virtual/bin/activate
+    wget -q -O kyt.zip "${repo}bot/kyt.zip"
+    unzip kyt.zip
+    pip3 install --upgrade pip
+    pip3 install -r kyt/requirements.txt
+    deactivate
 }
 
 with_no_virtual() {
-apt update
-apt install -y wget curl git
-apt install -y python3
-apt install -y python3-pip
-cd /etc/.telebot
-wget -q -O kyt.zip "${repo}bot/kyt.zip"
-unzip kyt.zip
-pip3 install -r kyt/requirements.txt
+    apt update
+    apt install -y wget curl git
+    apt install -y python3 python3-pip
+    cd /etc/.telebot
+    wget -q -O kyt.zip "${repo}bot/kyt.zip"
+    unzip kyt.zip
+    pip3 install -r kyt/requirements.txt
 }
 
 if [[ $(cekos) == "debian 12" || $(cekos) == "ubuntu 24.04" || $(cekos) == "ubuntu 24.10" ]]; then
-virtual_path="/etc/.telebot/virtual/bin/python3"
-with_virtual
+    virtual_path="/etc/.telebot/virtual/bin/python3"
+    with_virtual
 else
-virtual_path="/usr/bin/python3"
-with_no_virtual
+    virtual_path="/usr/bin/python3"
+    with_no_virtual
 fi
 
 cd /usr/bin
@@ -58,10 +55,8 @@ wget -q -O bot.zip "${repo}bot/bot.zip"
 unzip bot.zip
 chmod +x bot/*
 mv bot/* /usr/bin/
-rm -rf bot.zip
-rm -rf bot
+rm -rf bot.zip bot
 cd
-
 
 clear
 echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
@@ -72,17 +67,24 @@ echo -e "${grenbo}[*] Create Bot and Token Bot : @BotFather${NC}"
 echo -e "${grenbo}[*] Info ID Telegram : @MissRose_bot , perintah /info${NC}"
 echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 read -e -p "[*] Input your Bot Token : " bottoken
-read -e -p "[*] Input Your ID Telegram :" admin
-echo -e BOT_TOKEN='"'$bottoken'"' >> $dirbot/kyt/var.txt
-echo -e ADMIN='"'$admin'"' >> $dirbot/kyt/var.txt
-echo -e DOMAIN='"'$domain'"' >> $dirbot/kyt/var.txt
-echo -e PUB='"'$PUB'"' >> $dirbot/kyt/var.txt
-echo -e HOST='"'$NS'"' >> $dirbot/kyt/var.txt
+read -e -p "[*] Input Your Admin Telegram ID(s) (comma-separated) : " admin_ids
+
+# Format admin IDs sebagai array untuk Python
+admin_ids_formatted=$(echo $admin_ids | sed 's/,/","/g' | sed 's/^/"/' | sed 's/$/"/')
+
+# Simpan data ke var.txt
+{
+    echo -e BOT_TOKEN='"'$bottoken'"'
+    echo -e ADMIN_IDS='['$admin_ids_formatted']'
+    echo -e DOMAIN='"'$domain'"'
+    echo -e PUB='"'$PUB'"'
+    echo -e HOST='"'$NS'"'
+} > $dirbot/kyt/var.txt
 
 if [[ -e /etc/systemd/system/kyt.service ]]; then
-systemctl stop kyt
-systemctl disable kyt
-rm -f /etc/systemd/system/kyt.service
+    systemctl stop kyt
+    systemctl disable kyt
+    rm -f /etc/systemd/system/kyt.service
 fi
 
 cat > /etc/systemd/system/kyt.service << END
@@ -105,18 +107,17 @@ systemctl enable kyt
 systemctl restart kyt
 
 cd /root
-
 rm -rf $0
 
 clear
 echo "Your Data Bot"
 echo -e "==============================="
 echo "Token Bot : $bottoken"
-echo "Admin    : $admin"
+echo "Admin IDs : $admin_ids"
 echo "Domain   : $domain"
 echo "Pub      : $PUB"
 echo "Host     : $NS"
 echo -e "==============================="
 echo "Setting done"
 sleep 2
-echo " Installations complete, type /menu on your bot"
+echo "Installation complete, type /menu on your bot"
