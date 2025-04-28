@@ -4,17 +4,27 @@
 apt update
 apt install rsyslog -y
 
-# Function menampilkan versi OS
+# Menampilkan versi OS
 cekos() {
 source /etc/os-release
 echo "$ID $VERSION_ID"
 }
 
-# Mengecek apakah os ubuntu 24 atau debian 12
+# Mengecek apakah OS ubuntu 24 atau debian 12
 if [[ $(cekos) == "ubuntu 24.04" || $(cekos) == "ubuntu 24.10" ]]; then
 rsyslog_config="/etc/rsyslog.d/50-default.conf"
 elif [[ $(cekos) == "debian 12" ]]; then
 rsyslog_config="/etc/rsyslog.conf"
+fi
+
+if [[ $(cekos) == "ubuntu 24.04" || $(cekos) == "ubuntu 24.10" ||  $(cekos) == "debian 12" ]]; then
+if [[ $(cat $rsyslog_config | grep 'if \$programname == "dropbear"') ]] &>/dev/null; then
+echo -ne
+else
+echo 'if $programname == "dropbear" then /var/log/auth.log
+& stop' | sudo tee -a $rsyslog_config &>/dev/null
+systemctl restart rsyslog
+fi
 fi
 
 # Set permissions untuk log dropbear
@@ -27,15 +37,5 @@ for log_file in "${log_dropbear[@]}"; do
 done
 }
 
-# Cek apakah konfigurasi dropbear sudah ada atau belum
-if [[ $(cat $rsyslog_config | grep 'if \$programname == "dropbear"') ]] &>/dev/null; then
-echo -ne
-else
-echo 'if $programname == "dropbear" then /var/log/auth.log
-& stop' | sudo tee -a $rsyslog_config &>/dev/null
-systemctl restart rsyslog
-fi
-
 set_permissions
-
 rm -f $0
