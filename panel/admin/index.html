@@ -4,621 +4,128 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Yinn Panel Admin</title>
-  <style>
-    :root{
-      --bg:#070b12;
-      --panel:#0b1220;
-      --card:#0e1930;
-      --card2:#0b1426;
-      --text:#e9eefc;
-      --muted:#9fb0d0;
-      --line:rgba(255,255,255,.08);
-      --brand:#ff8a00;
-      --ok:#25d366;
-      --bad:#ff4d4d;
-      --shadow: 0 12px 40px rgba(0,0,0,.35);
-      --radius: 18px;
-      --radius2: 14px;
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-    }
-    *{box-sizing:border-box}
-    body{
-      margin:0;
-      font-family:var(--sans);
-      background:
-        radial-gradient(1200px 700px at 20% -10%, rgba(255,138,0,.18), transparent 55%),
-        radial-gradient(900px 600px at 90% 10%, rgba(70,120,255,.18), transparent 60%),
-        radial-gradient(1000px 800px at 30% 110%, rgba(43,255,196,.12), transparent 60%),
-        var(--bg);
-      color:var(--text);
-      min-height:100vh;
-    }
-    .wrap{
-      max-width: 980px;
-      margin: 0 auto;
-      padding: 28px 16px 60px;
-    }
-    .topbar{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      padding: 18px 18px;
-      border: 1px solid var(--line);
-      background: rgba(9,15,28,.75);
-      backdrop-filter: blur(10px);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-    }
-    .brand{
-      display:flex;
-      gap:12px;
-      align-items:flex-start;
-    }
-    .dot{
-      width:12px;height:12px;border-radius:999px;
-      background: var(--brand);
-      margin-top: 8px;
-      box-shadow: 0 0 24px rgba(255,138,0,.45);
-    }
-    h1{font-size:22px;margin:0;line-height:1.2}
-    .sub{color:var(--muted);font-size:12.5px;margin-top:4px}
-    .pill{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      padding: 8px 12px;
-      border-radius: 999px;
-      border:1px solid var(--line);
-      background: rgba(255,255,255,.03);
-      font-size:12px;
-      color:var(--muted);
-    }
-    .led{
-      width:9px;height:9px;border-radius:999px;
-      background: var(--bad);
-      box-shadow: 0 0 18px rgba(255,77,77,.35);
-    }
-    .led.ok{
-      background: var(--ok);
-      box-shadow: 0 0 18px rgba(37,211,102,.35);
-    }
-    .btn{
-      border:1px solid var(--line);
-      background: rgba(255,255,255,.03);
-      color:var(--text);
-      padding: 10px 14px;
-      border-radius: 12px;
-      cursor:pointer;
-      transition: .15s ease;
-      font-weight:600;
-      font-size:12.5px;
-    }
-    .btn:hover{transform: translateY(-1px); background: rgba(255,255,255,.06)}
-    .btn.primary{
-      border-color: rgba(255,138,0,.35);
-      background: rgba(255,138,0,.12);
-      color: #fff;
-    }
-    .grid{
-      display:grid;
-      grid-template-columns: 1.1fr .9fr;
-      gap: 14px;
-      margin-top: 14px;
-    }
-    @media (max-width: 860px){
-      .grid{grid-template-columns: 1fr}
-    }
-    .card{
-      border:1px solid var(--line);
-      border-radius: var(--radius);
-      background: rgba(10,16,30,.72);
-      backdrop-filter: blur(10px);
-      box-shadow: var(--shadow);
-      overflow:hidden;
-    }
-    .card .hd{
-      padding: 14px 16px;
-      border-bottom: 1px solid var(--line);
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:10px;
-    }
-    .card .hd .title{
-      font-weight:800;
-      letter-spacing:.2px;
-      font-size:13px;
-      color:#fff;
-    }
-    .card .bd{padding: 16px}
-    .row{display:grid;grid-template-columns: 150px 1fr;gap:10px;align-items:center;margin-bottom:10px}
-    .row label{color:var(--muted);font-size:12.5px}
-    .inp, select{
-      width:100%;
-      padding: 12px 12px;
-      border-radius: 12px;
-      border:1px solid var(--line);
-      background: rgba(255,255,255,.03);
-      color: var(--text);
-      outline:none;
-      font-size:13px;
-    }
-    .inp:focus, select:focus{border-color: rgba(255,138,0,.35); box-shadow: 0 0 0 3px rgba(255,138,0,.12)}
-    .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
-    .hint{color:var(--muted);font-size:12px;line-height:1.5}
-    .toast{
-      margin-top:10px;
-      padding: 10px 12px;
-      border-radius: 12px;
-      border: 1px solid var(--line);
-      background: rgba(255,255,255,.03);
-      color: var(--muted);
-      font-size: 12.5px;
-      display:none;
-    }
-    .toast.err{color:#ffd3d3;border-color: rgba(255,77,77,.35); background: rgba(255,77,77,.08)}
-    .toast.ok{color:#d3ffe3;border-color: rgba(37,211,102,.35); background: rgba(37,211,102,.08)}
-    .outTabs{display:flex;gap:8px;align-items:center}
-    .tab{
-      padding: 8px 10px;
-      border-radius: 999px;
-      border:1px solid var(--line);
-      background: rgba(255,255,255,.03);
-      font-size: 12px;
-      color: var(--muted);
-      cursor:pointer;
-    }
-    .tab.active{
-      background: rgba(255,138,0,.12);
-      border-color: rgba(255,138,0,.35);
-      color: #fff;
-    }
-    .outputBox{
-      border:1px solid var(--line);
-      border-radius: var(--radius);
-      background: rgba(0,0,0,.25);
-      padding: 14px;
-      overflow:auto;
-      max-height: 520px;
-    }
-    pre{
-      margin:0;
-      font-family: var(--mono);
-      font-size: 12.5px;
-      line-height: 1.55;
-      color: #dce6ff;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-    .kv{
-      display:grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-    @media (max-width: 860px){
-      .kv{grid-template-columns: 1fr}
-    }
-    .kvItem{
-      border:1px solid var(--line);
-      border-radius: var(--radius2);
-      background: rgba(255,255,255,.03);
-      padding: 12px 12px;
-    }
-    .kvK{color: var(--muted); font-size: 12px; margin-bottom: 6px}
-    .kvV{font-family: var(--mono); font-size: 12.5px; color:#fff}
-    .loginWrap{
-      display:flex;
-      justify-content:center;
-      margin-top: 14px;
-    }
-    .loginCard{
-      width: 100%;
-      max-width: 560px;
-      border:1px solid var(--line);
-      border-radius: var(--radius);
-      background: rgba(10,16,30,.72);
-      backdrop-filter: blur(10px);
-      box-shadow: var(--shadow);
-      overflow:hidden;
-    }
-    .loginCard .bd{padding: 18px}
-  </style>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./app.css" />
 </head>
 <body>
-  <div class="wrap">
-    <div class="topbar">
-      <div class="brand">
-        <div class="dot"></div>
-        <div>
-          <h1>Yinn Panel Admin</h1>
-          <div class="sub">Provisioning via Autoscript API • Token required</div>
-        </div>
-      </div>
+  <div class="bg"></div>
 
-      <div style="display:flex;gap:10px;align-items:center">
-        <div class="pill"><span id="led" class="led"></span><span id="apiStat">API: CHECKING</span></div>
-        <button id="btnLogout" class="btn" style="display:none">Logout</button>
+  <header class="topbar">
+    <div class="brand">
+      <div class="dot"></div>
+      <div>
+        <div class="title">Yinn Panel Admin</div>
+        <div class="sub">Provisioning via Autoscript API</div>
       </div>
     </div>
 
+    <div class="right">
+      <div class="pill" id="apiPill">
+        <span class="led led-warn" id="apiLed"></span>
+        <span id="apiText">API: CHECK...</span>
+      </div>
+      <button class="btn btn-ghost" id="btnLogout">Logout</button>
+    </div>
+  </header>
+
+  <main class="wrap">
     <!-- LOGIN -->
-    <div id="loginArea" class="loginWrap">
-      <div class="loginCard">
-        <div class="hd">
-          <div class="title">Login</div>
-          <div class="hint">Masukin token panel dulu. Disimpan di browser lu (localStorage).</div>
+    <section class="card" id="loginCard">
+      <div class="card-head">
+        <h2>Login</h2>
+        <p>Masukkan token panel untuk akses Admin.</p>
+      </div>
+
+      <div class="grid">
+        <div class="field">
+          <label>Panel Token</label>
+          <input id="tokenInput" type="password" placeholder="Bearer token..." autocomplete="off">
+          <div class="hint">Token disimpan lokal (localStorage). Logout untuk hapus.</div>
         </div>
-        <div class="bd">
-          <div class="row">
-            <label>Panel Host</label>
-            <input id="panelHost" class="inp" placeholder="contoh: panel.domain.tld" />
-          </div>
-          <div class="row">
-            <label>Token</label>
-            <input id="token" class="inp" placeholder="Bearer token..." />
-          </div>
-          <div class="actions">
-            <button id="btnCheck" class="btn primary">Validate</button>
-            <button id="btnClear" class="btn">Clear</button>
-          </div>
-          <div id="loginToast" class="toast"></div>
+
+        <div class="actions">
+          <button class="btn btn-primary" id="btnLogin">Validate & Login</button>
+          <button class="btn btn-ghost" id="btnClearToken">Clear</button>
         </div>
       </div>
-    </div>
+
+      <div class="msg" id="loginMsg"></div>
+    </section>
 
     <!-- APP -->
-    <div id="appArea" style="display:none">
-      <div class="grid">
-        <div class="card">
-          <div class="hd">
-            <div class="title">Create Account</div>
-            <div class="hint" id="hintHost"></div>
+    <section class="card hidden" id="appCard">
+      <div class="card-head">
+        <h2>Create Account</h2>
+        <p>Generate akun via autoscript backend.</p>
+      </div>
+
+      <div class="form">
+        <div class="row">
+          <div class="field">
+            <label>Proto</label>
+            <select id="proto">
+              <option value="ssh">SSH</option>
+              <option value="vmess">VMESS</option>
+              <option value="vless">VLESS</option>
+              <option value="trojan">TROJAN</option>
+            </select>
           </div>
-          <div class="bd">
-            <div class="row">
-              <label>Proto</label>
-              <select id="proto">
-                <option value="ssh">SSH</option>
-                <option value="vmess">VMESS</option>
-                <option value="vless">VLESS</option>
-                <option value="trojan">TROJAN</option>
-              </select>
-            </div>
-            <div class="row">
-              <label>Username</label>
-              <input id="username" class="inp" placeholder="3-32, alnum/underscore" />
-            </div>
-            <div class="row">
-              <label>Password</label>
-              <input id="password" class="inp" placeholder="min 4 char" />
-            </div>
-            <div class="row">
-              <label>Limit IP</label>
-              <input id="iplimit" class="inp" type="number" min="0" max="50" value="2" />
-            </div>
-            <div class="row">
-              <label>Expired (Days)</label>
-              <input id="days" class="inp" type="number" min="1" max="365" value="1" />
-            </div>
-            <div class="actions">
-              <button id="btnCreate" class="btn primary">Create</button>
-              <button id="btnReset" class="btn">Clear</button>
-            </div>
-            <div class="hint">Output akan diparse biar rapih. Lu juga bisa liat Raw.</div>
-            <div id="toast" class="toast"></div>
+
+          <div class="field">
+            <label>Username</label>
+            <input id="username" placeholder="contoh: yinn_01" autocomplete="off">
           </div>
         </div>
 
-        <div class="card">
-          <div class="hd">
-            <div class="title">Output</div>
-            <div class="outTabs">
-              <div id="tabParsed" class="tab active">Parsed</div>
-              <div id="tabRaw" class="tab">Raw</div>
-            </div>
+        <div class="row">
+          <div class="field">
+            <label>Password</label>
+            <input id="password" placeholder="contoh: Test1234!" autocomplete="off">
           </div>
-          <div class="bd">
-            <div id="parsedBox" class="outputBox">
-              <div class="hint">Belum ada output.</div>
-            </div>
-            <div id="rawBox" class="outputBox" style="display:none">
-              <pre id="rawText"></pre>
-            </div>
+
+          <div class="field">
+            <label>Limit IP</label>
+            <input id="iplimit" type="number" min="0" max="50" value="2">
           </div>
+
+          <div class="field">
+            <label>Expired (Days)</label>
+            <input id="days" type="number" min="1" max="365" value="1">
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-primary" id="btnCreate">Create</button>
+          <button class="btn btn-ghost" id="btnClearForm">Clear</button>
         </div>
       </div>
-    </div>
 
-  </div>
+      <div class="terminal-wrap">
+        <div class="terminal-head">
+          <div class="term-dots">
+            <span class="d red"></span>
+            <span class="d yellow"></span>
+            <span class="d green"></span>
+          </div>
+          <div class="term-title">endpoint.js</div>
+          <div class="term-copy">
+            <button class="btn btn-mini" id="btnCopyOut">Copy</button>
+          </div>
+        </div>
 
-<script>
-(function(){
-  const $ = (id) => document.getElementById(id);
+        <div class="terminal" id="terminal">
+          <div class="term-line dim"># output akan muncul di sini...</div>
+        </div>
 
-  const loginArea = $("loginArea");
-  const appArea = $("appArea");
-  const btnLogout = $("btnLogout");
+        <div class="terminal-foot">
+          <span class="dim" id="outMeta">—</span>
+        </div>
+      </div>
+    </section>
+  </main>
 
-  const led = $("led");
-  const apiStat = $("apiStat");
-  const loginToast = $("loginToast");
-  const toast = $("toast");
-
-  const panelHostEl = $("panelHost");
-  const tokenEl = $("token");
-
-  const hintHost = $("hintHost");
-
-  const tabParsed = $("tabParsed");
-  const tabRaw = $("tabRaw");
-  const parsedBox = $("parsedBox");
-  const rawBox = $("rawBox");
-  const rawText = $("rawText");
-
-  function setApi(ok, msg){
-    if(ok){
-      led.classList.add("ok");
-      apiStat.textContent = "API: OK";
-    }else{
-      led.classList.remove("ok");
-      apiStat.textContent = "API: DOWN";
-    }
-    if(msg) apiStat.textContent = msg;
-  }
-
-  function showToast(el, type, msg){
-    el.className = "toast " + (type || "");
-    el.textContent = msg || "";
-    el.style.display = "block";
-  }
-  function hideToast(el){ el.style.display="none"; }
-
-  function baseURL(){
-    let host = (panelHostEl.value || "").trim();
-    if(!host) host = localStorage.getItem("yinn_panel_host") || "";
-    host = host.replace(/^https?:\/\//, "").replace(/\/+$/, "");
-    if(!host) return "";
-    return "http://" + host; // nanti lu tinggal ganti ke https kalau udah SSL
-  }
-
-  function authHeader(){
-    const t = (tokenEl.value || "").trim() || (localStorage.getItem("yinn_panel_token") || "");
-    return t ? ("Bearer " + t.replace(/^Bearer\s+/i, "")) : "";
-  }
-
-  async function apiFetch(path, opts){
-    const url = baseURL() + path;
-    const headers = Object.assign({}, (opts && opts.headers) || {});
-    headers["Authorization"] = authHeader();
-    return fetch(url, Object.assign({}, opts || {}, { headers }));
-  }
-
-  async function validate(){
-    hideToast(loginToast);
-    setApi(false, "API: CHECKING");
-
-    const host = (panelHostEl.value || "").trim().replace(/^https?:\/\//,"").replace(/\/+$/,"");
-    const token = (tokenEl.value || "").trim().replace(/^Bearer\s+/i,"");
-
-    if(!host){ showToast(loginToast, "err", "Panel Host wajib diisi."); setApi(false,"API: DOWN"); return false; }
-    if(!token){ showToast(loginToast, "err", "Token wajib diisi."); setApi(false,"API: DOWN"); return false; }
-
-    localStorage.setItem("yinn_panel_host", host);
-    localStorage.setItem("yinn_panel_token", token);
-
-    try{
-      const r = await apiFetch("/health", { method:"GET" });
-      if(!r.ok){
-        showToast(loginToast, "err", "Token salah / API tidak bisa diakses (status " + r.status + ").");
-        setApi(false,"API: DOWN");
-        return false;
-      }
-      const j = await r.json().catch(()=>({}));
-      if(!j || j.ok !== true){
-        showToast(loginToast, "err", "API response invalid.");
-        setApi(false,"API: DOWN");
-        return false;
-      }
-      showToast(loginToast, "ok", "Valid ✅ Masuk ke panel...");
-      setApi(true,"API: OK");
-      setTimeout(()=>enterApp(), 350);
-      return true;
-    }catch(e){
-      showToast(loginToast, "err", "Gagal konek ke API: " + (e && e.message ? e.message : e));
-      setApi(false,"API: DOWN");
-      return false;
-    }
-  }
-
-  function enterApp(){
-    loginArea.style.display="none";
-    appArea.style.display="block";
-    btnLogout.style.display="inline-flex";
-
-    const host = localStorage.getItem("yinn_panel_host") || "";
-    hintHost.textContent = host ? ("Host: " + host) : "";
-  }
-
-  function logout(){
-    localStorage.removeItem("yinn_panel_token");
-    // host biar enak ga dihapus
-    tokenEl.value = "";
-    appArea.style.display="none";
-    loginArea.style.display="flex";
-    btnLogout.style.display="none";
-    setApi(false,"API: DOWN");
-  }
-
-  function stripBoxLines(s){
-    // buang karakter box yang ganggu tampilan
-    return (s||"")
-      .replace(/\u001b\[[0-9;]*m/g, "")
-      .replace(/[☉╭╮╰╯│─═]+/g, "")
-      .replace(/\r/g,"")
-      .trim();
-  }
-
-  function parseKeyValue(text){
-    // ambil baris "Key : Value"
-    const lines = (text||"").split("\n").map(x=>x.trim()).filter(Boolean);
-    const kv = [];
-    for(const ln of lines){
-      const m = ln.match(/^([A-Za-z0-9 _.-]{2,28})\s*:\s*(.+)$/);
-      if(m){
-        kv.push([m[1].trim(), m[2].trim()]);
-      }
-    }
-    // dedup key
-    const map = new Map();
-    for(const [k,v] of kv){
-      if(!map.has(k)) map.set(k,v);
-    }
-    return Array.from(map.entries());
-  }
-
-  function renderParsed(raw){
-    const cleaned = stripBoxLines(raw);
-    const kv = parseKeyValue(cleaned);
-
-    parsedBox.innerHTML = "";
-    if(kv.length === 0){
-      parsedBox.innerHTML = '<div class="hint">Tidak ada field yang bisa diparse. Lihat Raw.</div>';
-      return;
-    }
-
-    const wrap = document.createElement("div");
-    wrap.className="kv";
-
-    kv.forEach(([k,v])=>{
-      const it = document.createElement("div");
-      it.className="kvItem";
-      it.innerHTML = `<div class="kvK">${escapeHtml(k)}</div><div class="kvV">${escapeHtml(v)}</div>`;
-      wrap.appendChild(it);
-    });
-    parsedBox.appendChild(wrap);
-  }
-
-  function escapeHtml(s){
-    return (s||"").replace(/[&<>"']/g, (c)=>({
-      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
-    }[c]));
-  }
-
-  async function createAccount(){
-    hideToast(toast);
-
-    const body = {
-      proto: $("proto").value,
-      username: ($("username").value || "").trim(),
-      password: ($("password").value || "").trim(),
-      iplimit: parseInt($("iplimit").value || "0", 10),
-      days: parseInt($("days").value || "1", 10),
-    };
-
-    if(!body.username || body.username.length < 3){
-      showToast(toast,"err","Username minimal 3 char.");
-      return;
-    }
-    if(!body.password || body.password.length < 4){
-      showToast(toast,"err","Password minimal 4 char.");
-      return;
-    }
-
-    $("btnCreate").disabled = true;
-    $("btnCreate").textContent = "Creating...";
-
-    try{
-      const r = await apiFetch("/api/create", {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify(body)
-      });
-
-      if(r.status === 401){
-        showToast(toast,"err","Unauthorized. Token salah / sudah revoke.");
-        setApi(false,"API: DOWN");
-        return;
-      }
-
-      const j = await r.json().catch(()=>({}));
-      if(!r.ok){
-        showToast(toast,"err","Error: " + (j && (j.detail||j.message) ? (j.detail||j.message) : ("status "+r.status)));
-        return;
-      }
-
-      setApi(true,"API: OK");
-      showToast(toast,"ok","Sukses ✅");
-
-      const out = (j && j.output) ? j.output : "";
-      rawText.textContent = out;
-      renderParsed(out);
-
-      // auto ke Parsed
-      tabParsed.click();
-    }catch(e){
-      showToast(toast,"err","Gagal request: " + (e && e.message ? e.message : e));
-    }finally{
-      $("btnCreate").disabled = false;
-      $("btnCreate").textContent = "Create";
-    }
-  }
-
-  // Tabs
-  tabParsed.onclick = () => {
-    tabParsed.classList.add("active");
-    tabRaw.classList.remove("active");
-    parsedBox.style.display="block";
-    rawBox.style.display="none";
-  };
-  tabRaw.onclick = () => {
-    tabRaw.classList.add("active");
-    tabParsed.classList.remove("active");
-    parsedBox.style.display="none";
-    rawBox.style.display="block";
-  };
-
-  // Events
-  $("btnCheck").onclick = validate;
-  $("btnClear").onclick = () => { panelHostEl.value=""; tokenEl.value=""; localStorage.removeItem("yinn_panel_token"); hideToast(loginToast); };
-  btnLogout.onclick = logout;
-
-  $("btnCreate").onclick = createAccount;
-  $("btnReset").onclick = () => {
-    $("username").value="";
-    $("password").value="";
-    $("iplimit").value="2";
-    $("days").value="1";
-    hideToast(toast);
-  };
-
-  // Auto fill
-  panelHostEl.value = localStorage.getItem("yinn_panel_host") || "";
-  tokenEl.value = localStorage.getItem("yinn_panel_token") || "";
-
-  // Auto validate if token exists
-  (async ()=>{
-    const host = localStorage.getItem("yinn_panel_host") || "";
-    const tok  = localStorage.getItem("yinn_panel_token") || "";
-    if(host && tok){
-      try{
-        const r = await apiFetch("/health",{method:"GET"});
-        if(r.ok){
-          setApi(true,"API: OK");
-          enterApp();
-        }else{
-          setApi(false,"API: DOWN");
-        }
-      }catch(e){
-        setApi(false,"API: DOWN");
-      }
-    }else{
-      setApi(false,"API: DOWN");
-    }
-  })();
-
-})();
-</script>
+  <script src="./endpoint.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
