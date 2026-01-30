@@ -1,12 +1,12 @@
+cat > /opt/yinnpanel/app.py <<'PY'
 import os
 import re
+import subprocess
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
-
-import pexpect
 
 app = FastAPI(title="Yinn Panel API")
 
@@ -21,14 +21,12 @@ CMD_MAP = {
 
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9_]{3,32}$")
 
-
 class CreateReq(BaseModel):
     proto: str = Field(..., description="ssh/vmess/vless/trojan")
     username: str
     password: str
     iplimit: int = 0
     days: int = 1
-
 
 def _get_bearer(authorization: Optional[str]) -> str:
     if not authorization:
@@ -40,112 +38,31 @@ def _get_bearer(authorization: Optional[str]) -> str:
         return ""
     return parts[1].strip()
 
-
 def auth_ok(authorization: Optional[str]) -> bool:
     token = _get_bearer(authorization)
     return bool(API_TOKEN) and bool(token) and token == API_TOKEN
-
 
 @app.get("/")
 def root():
     return RedirectResponse(url="/docs")
 
-
 @app.get("/health")
 def health():
     return {"ok": True}
 
-
+# login web (POST)
 @app.post("/api/auth")
 def auth_check(authorization: Optional[str] = Header(default=None)):
     if not auth_ok(authorization):
         raise HTTPException(status_code=401, detail="Unauthorized")
     return {"ok": True}
 
-
+# fallback (GET) biar web ga rewel
 @app.get("/api/auth")
 def auth_check_get(authorization: Optional[str] = Header(default=None)):
     if not auth_ok(authorization):
         raise HTTPException(status_code=401, detail="Unauthorized")
     return {"ok": True}
-
-
-def run_autoscript(cmd_path: str, username: str, password: str, iplimit: int, days: int) -> str:
-    """
-    Jalankan autoscript interaktif via pexpect.
-    Ini lebih tahan banting buat script addws/addvless/addtr yang prompt-nya beda-beda.
-    """
-    child = pexpect.spawn(f"sudo -n {cmd_path}", encoding="utf-8", timeout=180)
-
-    out_chunks = []
-
-    def expect_send(patterns, send_value: str):
-      idx = child.expect(patterns)
-      out_chunks.append(child.before or "")
-      if send_value is not None:
-        child.sendline(str(send_value))
-      return idx
-
-    # Pola prompt umum (berbeda tiap autoscript)
-    PROMPT_USER = [r"Username", r"User", r"Masukkan.*user", r"Input.*user", r"Enter.*user", r"[Uu]sername"]
-    PROMPT_PASS = [r"Password", r"Pass", r"Masukkan.*pass", r"Input.*pass", r"Enter.*pass"]
-    PROMPT_IPL  = [r"Limit\s*IP", r"ip\s*limit", r"Max\s*IP", r"Device", r"limit.*device"]
-    PROMPT_DAYS = [r"Expired", r"Days", r"Durasi", r"Masa\s*aktif", r"Berapa.*hari"]
-    PROMPT_ANY  = [r"\?", r":", r">", r"\]"]
-
-    # Kita loop: tangkap prompt, kirim input yang relevan
-    # Stop kalau script selesai (EOF)
-    sent_user = sent_pass = sent_ipl = sent_days = False
-
-    while True:
-      try:
-        idx = child.expect(
-          [
-            pexpect.EOF,
-            *PROMPT_USER,
-            *PROMPT_PASS,
-            *PROMPT_IPL,
-            *PROMPT_DAYS,
-          ],
-          timeout=180,
-        )
-
-        if idx == 0:
-          out_chunks.append(child.before or "")
-          break
-
-        matched = child.after or ""
-        out_chunks.append(matched)
-
-        m = matched.lower()
-
-        if any(k.lower() in m for k in ["user", "username"]) and not sent_user:
-          child.sendline(username); sent_user = True; continue
-
-        if any(k.lower() in m for k in ["pass"]) and not sent_pass:
-          child.sendline(password); sent_pass = True; continue
-
-        if ("limit" in m or "device" in m) and not sent_ipl:
-          child.sendline(str(iplimit)); sent_ipl = True; continue
-
-        if ("expired" in m or "days" in m or "durasi" in m or "masa" in m) and not sent_days:
-          child.sendline(str(days)); sent_days = True; continue
-
-        # kalau prompt aneh: biarin (jangan spam input random)
-        # kita cuma collect output
-        continue
-
-      except pexpect.TIMEOUT:
-        out_chunks.append("\n[ERROR] timeout waiting autoscript prompt\n")
-        break
-
-    try:
-      child.close()
-    except Exception:
-      pass
-
-    return "".join(out_chunks).strip()
-
 
 @app.post("/api/create")
 def create(req: CreateReq, authorization: Optional[str] = Header(default=None)):
@@ -161,6 +78,7 @@ def create(req: CreateReq, authorization: Optional[str] = Header(default=None)):
         raise HTTPException(status_code=400, detail="Invalid username")
 
     password = (req.password or "").strip()
+    # ✅ sesuai request lu: password minimal 1 char
     if len(password) < 1 or len(password) > 64:
         raise HTTPException(status_code=400, detail="Invalid password")
 
@@ -173,18 +91,27 @@ def create(req: CreateReq, authorization: Optional[str] = Header(default=None)):
         raise HTTPException(status_code=400, detail="Invalid days")
 
     cmd = CMD_MAP[proto]
+    stdin_payload = f"{username}\n{password}\n{iplimit}\n{days}\n".encode()
 
-    out = run_autoscript(cmd, username, password, iplimit, days)
+    try:
+        p = subprocess.run(
+            ["sudo", "-n", cmd],
+            input=stdin_payload,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=240,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Command timeout")
 
-    # kalau autoscript ngasih error besar, lempar 500
-    if re.search(r"PERMISSION DENIED|Banned|404 NOT FOUND|Unauthorized", out, re.I):
-        raise HTTPException(status_code=500, detail=out[-2000:])
+    out = p.stdout.decode(errors="replace").strip()
 
-MAX_HEAD = 20000
-MAX_TAIL = 80000
+    if p.returncode != 0:
+        raise HTTPException(status_code=500, detail=f"Command failed: {out[-2000:]}")
 
-head = out[:MAX_HEAD]
-tail = out[-MAX_TAIL:] if len(out) > MAX_TAIL else out
-merged = head + ("\n\n... (trimmed) ...\n\n" if len(out) > (MAX_HEAD + MAX_TAIL) else "\n") + tail
+    # ✅ KASIH FULL OUTPUT (biar gak kepotong lagi)
+    return {"ok": True, "output": out}
+PY
 
-return {"ok": True, "output": merged, "trimmed": len(out) > (MAX_HEAD + MAX_TAIL)}
+chown panel:panel /opt/yinnpanel/app.py
