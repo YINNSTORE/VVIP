@@ -1,5 +1,11 @@
 (function () {
-  const CFG = window.YINN_PANEL || { API_BASE: "/panel", VERIFY_PATH: "/api/auth/verify", CREATE_PATH: "/api/create", HEALTH_PATH: "/health" };
+  // FIX: default config harus match API lu
+  const CFG = window.YINN_PANEL || {
+    API_BASE: "",                 // kosong = same-origin
+    VERIFY_PATH: "/api/auth",     // ✅ FIX (bukan /api/auth/verify)
+    CREATE_PATH: "/api/create",
+    HEALTH_PATH: "/health"
+  };
 
   const $ = (id) => document.getElementById(id);
 
@@ -55,18 +61,39 @@
   }
 
   function apiUrl(path) {
-    return `${CFG.API_BASE}${path}`;
+    // normalize (hindari double slash)
+    const base = (CFG.API_BASE || "").replace(/\/+$/, "");
+    const p = (path || "").startsWith("/") ? path : `/${path}`;
+    return `${base}${p}`;
   }
 
-  async function fetchJSON(url, opts = {}) {
-    const res = await fetch(url, opts);
-    let data = null;
-    try { data = await res.json(); } catch {}
-    return { res, data };
+  async function fetchJSON(url, opts = {}, timeoutMs = 12000) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(url, {
+        cache: "no-store",
+        credentials: "same-origin",
+        signal: controller.signal,
+        ...opts,
+        headers: {
+          "Accept": "application/json",
+          "Cache-Control": "no-cache",
+          ...(opts.headers || {}),
+        },
+      });
+
+      let data = null;
+      const text = await res.text();
+      try { data = text ? JSON.parse(text) : null; } catch { data = { _raw: text || "" }; }
+      return { res, data };
+    } finally {
+      clearTimeout(id);
+    }
   }
 
   function stripAnsi(s) {
-    // hapus escape ansi biar rapih di terminal
     return (s || "").replace(/\x1b\[[0-9;]*m/g, "").replace(/\r/g, "");
   }
 
@@ -91,7 +118,7 @@
 
   async function checkHealth() {
     try {
-      const { res } = await fetchJSON(apiUrl(CFG.HEALTH_PATH), { cache: "no-store" });
+      const { res } = await fetchJSON(apiUrl(CFG.HEALTH_PATH), { method: "GET" }, 8000);
       if (res && res.ok) setApiState("ok", "API: OK");
       else setApiState("warn", "API: CHECK...");
     } catch {
@@ -99,19 +126,41 @@
     }
   }
 
+  // ✅ FIX: verify robust (POST first, fallback GET, tolerant ok)
   async function verifyToken(token) {
-    const { res, data } = await fetchJSON(apiUrl(CFG.VERIFY_PATH), {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Cache-Control": "no-store",
-      },
-    });
+    const t = (token || "").trim();
+    if (!t) return { ok: false, msg: "Token kosong." };
+
+    const url = apiUrl(CFG.VERIFY_PATH);
+    const headers = {
+      "Authorization": `Bearer ${t}`,
+      "Cache-Control": "no-store",
+    };
+
+    // try POST
+    let r = await fetchJSON(url, { method: "POST", headers }, 12000);
+
+    // fallback GET if 405 Method Not Allowed
+    if (r.res && r.res.status === 405) {
+      r = await fetchJSON(url, { method: "GET", headers }, 12000);
+    }
+
+    const { res, data } = r;
 
     if (!res) return { ok: false, msg: "No response" };
-    if (res.ok && data && data.ok) return { ok: true, msg: "Token valid" };
+
     if (res.status === 401) return { ok: false, msg: "Token salah / revoked" };
-    return { ok: false, msg: (data && (data.detail || data.message)) || `Verify gagal (${res.status})` };
+
+    // tolerate various ok flags OR status 200
+    const okFlag =
+      (data && (data.ok === true || data.success === true || data.valid === true || data.authorized === true));
+
+    if (res.ok && (okFlag || res.status === 200)) return { ok: true, msg: "Token valid" };
+
+    const detail =
+      (data && (data.detail || data.message || data.error || data._raw)) || `Verify gagal (${res.status})`;
+
+    return { ok: false, msg: detail };
   }
 
   function showAppUI() {
@@ -201,8 +250,13 @@
       days: Number(days.value || 1),
     };
 
-    // UX: tulis prompt ala terminal
-    termWrite(`\n$ curl -X POST ${location.origin}${apiUrl(CFG.CREATE_PATH)} \\\n  -H "Authorization: Bearer ********" \\\n  -H "Content-Type: application/json" \\\n  -d '${JSON.stringify(payload)}'\n`, "append");
+    termWrite(
+      `\n$ curl -X POST ${location.origin}${apiUrl(CFG.CREATE_PATH)} \\\n` +
+      `  -H "Authorization: Bearer ********" \\\n` +
+      `  -H "Content-Type: application/json" \\\n` +
+      `  -d '${JSON.stringify(payload)}'\n`,
+      "append"
+    );
 
     outMeta.textContent = `Running... • ${nowStr()}`;
 
@@ -215,7 +269,7 @@
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
-      }));
+      }, 180000));
     } catch (e) {
       termWrite(`\n[ERROR] Network error: ${String(e)}\n`, "append");
       outMeta.textContent = `Failed • ${nowStr()}`;
@@ -238,7 +292,7 @@
     }
 
     if (!res.ok) {
-      const msg = (data && (data.detail || data.message)) || `HTTP ${res.status}`;
+      const msg = (data && (data.detail || data.message || data.error)) || `HTTP ${res.status}`;
       termWrite(`\n[ERROR] ${msg}\n`, "append");
       outMeta.textContent = `Failed • ${nowStr()}`;
       return;
@@ -249,7 +303,6 @@
     outMeta.textContent = `Done • ${nowStr()}`;
   });
 
-  // start
   boot();
   setInterval(checkHealth, 8000);
 })();
