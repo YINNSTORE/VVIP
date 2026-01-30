@@ -161,7 +161,7 @@ def create(req: CreateReq, authorization: Optional[str] = Header(default=None)):
         raise HTTPException(status_code=400, detail="Invalid username")
 
     password = (req.password or "").strip()
-    if len(password) < 4 or len(password) > 64:
+    if len(password) < 1 or len(password) > 64:
         raise HTTPException(status_code=400, detail="Invalid password")
 
     iplimit = int(req.iplimit)
