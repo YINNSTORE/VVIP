@@ -786,12 +786,30 @@ print_success "All Packet"
 function menu(){
     clear
     print_install "Memasang Menu Packet"
-    wget ${REPO}menu/menu.zip
-    unzip menu.zip
-    chmod +x menu/*
-    mv menu/* /usr/local/sbin
+
+    cd /root || exit 1
+
+    rm -f menu.zip
     rm -rf menu
-    rm -rf menu.zip
+
+    wget -q "${REPO}menu/menu.zip" -O menu.zip
+    unzip -o menu.zip >/dev/null 2>&1
+
+    # pastikan semua file menu/ jadi executable sebelum dipindah
+    chmod -R 755 menu >/dev/null 2>&1
+
+    # normalisasi line ending (anti p#!/bin/bash error)
+    find menu -type f -maxdepth 2 -print0 2>/dev/null | xargs -0 sed -i 's/\r$//' 2>/dev/null
+
+    # pindahkan semua file menu ke /usr/local/sbin
+    mv -f menu/* /usr/local/sbin/ >/dev/null 2>&1
+
+    # chmod final di lokasi target (ini yang lu butuhin)
+    chmod -R 755 /usr/local/sbin >/dev/null 2>&1
+
+    # bersih-bersih
+    rm -rf menu
+    rm -f menu.zip
 
 cat >/etc/systemd/system/limit-ip.service << EOF
 [Unit]
@@ -806,7 +824,7 @@ ExecStart=/bin/bash /usr/local/sbin/limit.xd limit-ip
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="TERM=dumb"
 Restart=always
-RestartSec=5  # Disarankan tambahkan delay restart
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
@@ -825,7 +843,7 @@ ExecStart=/bin/bash /usr/local/sbin/limit.xd user-quota
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="TERM=dumb"
 Restart=always
-RestartSec=5  # Disarankan tambahkan delay restart
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
