@@ -1,17 +1,9 @@
-// admin/app.js (FULL FIX)
-// - API_BASE default same-origin
-// - VERIFY_PATH fix => /api/auth
-// - verifyToken: POST first, fallback GET if 405
-// - fetchJSON robust (handles HTML 200, json parse fail)
-// - terminal output strips ANSI
-// - no cache + timeout + abort controller
-console.log("YINN PANEL app.js LOADED v2", new Date().toISOString());
 (function () {
   const CFG = window.YINN_PANEL || {
     API_BASE: "",              // same-origin
-    VERIFY_PATH: "/api/auth",  // sesuai app.py
+    VERIFY_PATH: "/api/auth",
     CREATE_PATH: "/api/create",
-    HEALTH_PATH: "/health",
+    HEALTH_PATH: "/health"
   };
 
   const $ = (id) => document.getElementById(id);
@@ -44,7 +36,7 @@ console.log("YINN PANEL app.js LOADED v2", new Date().toISOString());
   const LS_KEY = "yinn_panel_token";
 
   function setMsg(text, kind = "ok") {
-    loginMsg.textContent = text || "";
+    loginMsg.textContent = text;
     loginMsg.className = `msg show ${kind}`;
   }
   function hideMsg() {
@@ -52,24 +44,16 @@ console.log("YINN PANEL app.js LOADED v2", new Date().toISOString());
     loginMsg.textContent = "";
   }
 
-  function getToken() {
-    return localStorage.getItem(LS_KEY) || "";
-  }
-  function setToken(t) {
-    localStorage.setItem(LS_KEY, t || "");
-  }
-  function clearToken() {
-    localStorage.removeItem(LS_KEY);
-  }
+  function getToken() { return localStorage.getItem(LS_KEY) || ""; }
+  function setToken(t) { localStorage.setItem(LS_KEY, t); }
+  function clearToken() { localStorage.removeItem(LS_KEY); }
 
   function setApiState(state, label) {
-    apiLed.className =
-      "led " + (state === "ok" ? "led-ok" : state === "err" ? "led-err" : "led-warn");
-    apiText.textContent = label || "";
+    apiLed.className = "led " + (state === "ok" ? "led-ok" : state === "err" ? "led-err" : "led-warn");
+    apiText.textContent = label;
   }
 
   function apiUrl(path) {
-    // normalize (hindari double slash)
     const base = (CFG.API_BASE || "").replace(/\/+$/, "");
     const p = (path || "").startsWith("/") ? path : `/${path}`;
     return `${base}${p}`;
@@ -86,63 +70,92 @@ console.log("YINN PANEL app.js LOADED v2", new Date().toISOString());
         signal: controller.signal,
         ...opts,
         headers: {
-          Accept: "application/json",
+          "Accept": "application/json",
           "Cache-Control": "no-cache",
           ...(opts.headers || {}),
         },
       });
 
-      const text = await res.text();
       let data = null;
-      if (text && text.trim()) {
-        try {
-          data = JSON.parse(text);
-        } catch {
-          // kalau ternyata HTML (misal index.html), simpan raw
-          data = { _raw: text };
-        }
-      }
+      const text = await res.text();
+      try { data = text ? JSON.parse(text) : null; } catch { data = { _raw: text || "" }; }
       return { res, data };
     } finally {
       clearTimeout(id);
     }
   }
 
+  function nowStr() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  // ========= OUTPUT FILTER =========
   function stripAnsi(s) {
     return (s || "").replace(/\x1b\[[0-9;]*m/g, "").replace(/\r/g, "");
   }
 
+  function cleanLine(line) {
+    let x = (line ?? "").toString();
+
+    // buang "-e " dari echo -e
+    x = x.replace(/^\s*-e\s+/g, "");
+
+    // buang noise unknown (autoscript sering begini)
+    if (/^'unknown'\s*:\s*I need something more specific\./i.test(x)) return "";
+    if (/I need something more specific\./i.test(x)) return "";
+
+    // buang loading spam
+    if (/^\s*loading\.\.\.\s*$/i.test(x)) return "";
+
+    return x;
+  }
+
+  function filterOutput(raw) {
+    const t = stripAnsi(raw);
+    const lines = t.split("\n").map(cleanLine).filter(Boolean);
+
+    // rapihin spasi beruntun
+    const normalized = lines.map(l => l.replace(/[ \t]+$/g, ""));
+
+    return normalized.join("\n").trim();
+  }
+
+  // ========= TERMINAL RENDER =========
   function termWrite(text, mode = "append") {
-    const t = stripAnsi(text);
+    const cleaned = filterOutput(text);
+
     if (mode === "replace") terminal.innerHTML = "";
-    const lines = String(t).split("\n");
+
+    const lines = cleaned ? cleaned.split("\n") : [];
     for (const line of lines) {
       const div = document.createElement("div");
       div.className = "term-line";
+
+      // highlight beberapa line penting
+      if (/Status\s+Create/i.test(line)) div.classList.add("hl-ok");
+      if (/Unauthorized|PERMISSION DENIED|Banned|NOT FOUND/i.test(line)) div.classList.add("hl-err");
+
       div.textContent = line;
       terminal.appendChild(div);
     }
+
     terminal.scrollTop = terminal.scrollHeight;
   }
 
-  function nowStr() {
-    const d = new Date();
-    const pad = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(
-      d.getHours()
-    )}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  function getTerminalPlainText() {
+    // pastikan copy itu beneran plain text
+    return Array.from(terminal.querySelectorAll(".term-line"))
+      .map(el => el.textContent || "")
+      .join("\n")
+      .trim();
   }
 
+  // ========= HEALTH + VERIFY =========
   async function checkHealth() {
     try {
-      const { res, data } = await fetchJSON(apiUrl(CFG.HEALTH_PATH), { method: "GET" }, 8000);
-
-      // kalau kebaca HTML (raw ada), berarti salah route/NGINX (dibalikin index.html)
-      if (data && data._raw) {
-        setApiState("warn", "API: ROUTE?");
-        return;
-      }
-
+      const { res } = await fetchJSON(apiUrl(CFG.HEALTH_PATH), { method: "GET" }, 8000);
       if (res && res.ok) setApiState("ok", "API: OK");
       else setApiState("warn", "API: CHECK...");
     } catch {
@@ -150,52 +163,25 @@ console.log("YINN PANEL app.js LOADED v2", new Date().toISOString());
     }
   }
 
-  // ✅ verify robust (POST first, fallback GET, tolerant ok)
   async function verifyToken(token) {
     const t = (token || "").trim();
     if (!t) return { ok: false, msg: "Token kosong." };
 
     const url = apiUrl(CFG.VERIFY_PATH);
-    const headers = {
-      Authorization: `Bearer ${t}`,
-      "Cache-Control": "no-store",
-      Accept: "application/json",
-    };
+    const headers = { "Authorization": `Bearer ${t}` };
 
-    // try POST
+    // POST dulu (sesuai app.py), fallback GET kalau 405
     let r = await fetchJSON(url, { method: "POST", headers }, 12000);
-
-    // fallback GET if 405 Method Not Allowed
-    if (r.res && r.res.status === 405) {
-      r = await fetchJSON(url, { method: "GET", headers }, 12000);
-    }
+    if (r.res && r.res.status === 405) r = await fetchJSON(url, { method: "GET", headers }, 12000);
 
     const { res, data } = r;
-
     if (!res) return { ok: false, msg: "No response" };
     if (res.status === 401) return { ok: false, msg: "Token salah / revoked" };
 
-    // kalau balik HTML, itu route salah (misal kena try_files /index.html)
-    if (data && data._raw) {
-      return {
-        ok: false,
-        msg: "Verify kena HTML (route salah). Cek Nginx location /api/ diarahkan ke API.",
-      };
-    }
-
-    const okFlag =
-      data &&
-      (data.ok === true ||
-        data.success === true ||
-        data.valid === true ||
-        data.authorized === true);
-
-    // toleran: status 200 dianggap valid walau body kosong
+    const okFlag = !!(data && (data.ok === true || data.success === true || data.valid === true || data.authorized === true));
     if (res.ok && (okFlag || res.status === 200)) return { ok: true, msg: "Token valid" };
 
-    const detail =
-      (data && (data.detail || data.message || data.error)) || `Verify gagal (${res.status})`;
-
+    const detail = (data && (data.detail || data.message || data.error || data._raw)) || `Verify gagal (${res.status})`;
     return { ok: false, msg: detail };
   }
 
@@ -210,6 +196,7 @@ console.log("YINN PANEL app.js LOADED v2", new Date().toISOString());
 
   async function boot() {
     await checkHealth();
+
     const t = getToken();
     if (t) {
       const v = await verifyToken(t);
@@ -220,9 +207,11 @@ console.log("YINN PANEL app.js LOADED v2", new Date().toISOString());
         return;
       }
     }
+
     showLoginUI();
   }
 
+  // ========= EVENTS =========
   btnLogin.addEventListener("click", async () => {
     hideMsg();
     const t = (tokenInput.value || "").trim();
@@ -261,10 +250,33 @@ console.log("YINN PANEL app.js LOADED v2", new Date().toISOString());
   });
 
   btnCopyOut.addEventListener("click", async () => {
-    const text = terminal.innerText || "";
+    const text = getTerminalPlainText();
+    if (!text) {
+      outMeta.textContent = `Nothing to copy • ${nowStr()}`;
+      return;
+    }
+
+    // Primary: Clipboard API
     try {
       await navigator.clipboard.writeText(text);
-      outMeta.textContent = `Copied • ${nowStr()}`;
+      outMeta.textContent = `Copied ✅ • ${nowStr()}`;
+      return;
+    } catch {}
+
+    // Fallback: execCommand copy (android kadang butuh ini)
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      ta.style.top = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length);
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      outMeta.textContent = ok ? `Copied ✅ • ${nowStr()}` : `Copy failed • ${nowStr()}`;
     } catch {
       outMeta.textContent = `Copy failed • ${nowStr()}`;
     }
@@ -279,7 +291,7 @@ console.log("YINN PANEL app.js LOADED v2", new Date().toISOString());
     }
 
     const payload = {
-      proto: proto.value || "ssh",
+      proto: (proto.value || "ssh"),
       username: (username.value || "").trim(),
       password: (password.value || "").trim(),
       iplimit: Number(iplimit.value || 0),
@@ -288,9 +300,9 @@ console.log("YINN PANEL app.js LOADED v2", new Date().toISOString());
 
     termWrite(
       `\n$ curl -X POST ${location.origin}${apiUrl(CFG.CREATE_PATH)} \\\n` +
-        `  -H "Authorization: Bearer ********" \\\n` +
-        `  -H "Content-Type: application/json" \\\n` +
-        `  -d '${JSON.stringify(payload)}'\n`,
+      `  -H "Authorization: Bearer ********" \\\n` +
+      `  -H "Content-Type: application/json" \\\n` +
+      `  -d '${JSON.stringify(payload)}'\n`,
       "append"
     );
 
@@ -298,19 +310,14 @@ console.log("YINN PANEL app.js LOADED v2", new Date().toISOString());
 
     let res, data;
     try {
-      ({ res, data } = await fetchJSON(
-        apiUrl(CFG.CREATE_PATH),
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${t}`,
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify(payload),
+      ({ res, data } = await fetchJSON(apiUrl(CFG.CREATE_PATH), {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${t}`,
+          "Content-Type": "application/json",
         },
-        180000
-      ));
+        body: JSON.stringify(payload),
+      }, 180000));
     } catch (e) {
       termWrite(`\n[ERROR] Network error: ${String(e)}\n`, "append");
       outMeta.textContent = `Failed • ${nowStr()}`;
@@ -332,21 +339,14 @@ console.log("YINN PANEL app.js LOADED v2", new Date().toISOString());
       return;
     }
 
-    // kalau balik HTML, berarti proxy API salah
-    if (data && data._raw) {
-      termWrite(`\n[ERROR] API kebalas HTML. Cek Nginx location /api/ proxy.\n`, "append");
-      outMeta.textContent = `Failed • ${nowStr()}`;
-      return;
-    }
-
     if (!res.ok) {
-      const msg = (data && (data.detail || data.message || data.error)) || `HTTP ${res.status}`;
+      const msg = (data && (data.detail || data.message || data.error || data._raw)) || `HTTP ${res.status}`;
       termWrite(`\n[ERROR] ${msg}\n`, "append");
       outMeta.textContent = `Failed • ${nowStr()}`;
       return;
     }
 
-    const out = data && data.output ? data.output : JSON.stringify(data);
+    const out = (data && data.output) ? data.output : JSON.stringify(data);
     termWrite(`\n${out}\n`, "append");
     outMeta.textContent = `Done • ${nowStr()}`;
   });
