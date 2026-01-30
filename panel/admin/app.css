@@ -254,7 +254,7 @@ body{
   white-space: pre-wrap;
   word-break: break-word;
 }
-
+.hidden{display:none!important;}
 /* highlight */
 .term-line.hl-ok{ color: rgba(34,197,94,0.95); }
 .term-line.hl-err{ color: rgba(239,68,68,0.95); }
