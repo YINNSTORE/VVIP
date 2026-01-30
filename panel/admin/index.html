@@ -70,28 +70,21 @@
         </div>
 
         <!-- SSH ONLY (auto hide by app.js for XRAY) -->
-        <div id="passRow" class="row two">
-          <div>
-            <div class="muted">Password (SSH only)</div>
-            <input id="password" class="input" placeholder="password" autocomplete="off" />
-          </div>
-          <div>
-            <div class="muted">Limit IP</div>
-            <input id="iplimit" class="input" type="number" value="2" min="0" />
-          </div>
+        <div id="passRow" class="row">
+          <div class="muted">Password (SSH only)</div>
+          <input id="password" class="input" placeholder="password (min 1 char)" autocomplete="off" />
+        </div>
+
+        <!-- SINGLE IP LIMIT (ALL PROTO) -->
+        <div class="row">
+          <div class="muted">Limit IP</div>
+          <input id="iplimit" class="input" type="number" value="2" min="0" />
         </div>
 
         <!-- XRAY ONLY (vmess/vless/trojan) -->
-        <div id="quotaRow" class="row two">
-          <div>
-            <div class="muted">Limit Quota (GB) — XRAY only</div>
-            <input id="quota" class="input" type="number" value="0" min="0" />
-            <div class="muted">0 = unlimited</div>
-          </div>
-          <div>
-            <div class="muted">Limit IP</div>
-            <input id="iplimit2" class="input" type="number" value="2" min="0" />
-          </div>
+        <div id="quotaRow" class="row hidden">
+          <div class="muted">Limit Quota (GB)</div>
+          <input id="quota_gb" class="input" type="number" value="0" min="0" />
         </div>
 
         <div class="row two">
@@ -130,23 +123,5 @@
   </div>
 
   <script src="app.js"></script>
-
-  <!-- Small inline bridge: keep iplimit single source -->
-  <script>
-    // Optional helper:
-    // because we have 2 iplimit inputs (ssh row vs xray row),
-    // we mirror them so app.js can just read #iplimit.
-    (function(){
-      const ip1 = document.getElementById("iplimit");
-      const ip2 = document.getElementById("iplimit2");
-      if (!ip1 || !ip2) return;
-
-      const sync = (from, to) => {
-        to.value = from.value;
-      };
-      ip1.addEventListener("input", () => sync(ip1, ip2));
-      ip2.addEventListener("input", () => sync(ip2, ip1));
-    })();
-  </script>
 </body>
 </html>
