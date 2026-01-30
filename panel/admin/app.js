@@ -33,6 +33,7 @@
 
   // XRAY only
   const quotaRow = $("quotaRow");
+  // NOTE: lu pakai id="quota_gb" di HTML (bukan quota_gb / quota)
   const quotaGb = $("quota_gb");
 
   const terminal = $("terminal");
@@ -93,6 +94,12 @@
   }
 
   let RAW_MODE = false;
+
+  function clearTerminal() {
+    terminal.innerHTML = "";
+    terminal.scrollTop = terminal.scrollHeight;
+  }
+
   function termWrite(text, mode = "append", cls = "") {
     const t = RAW_MODE ? (text || "") : stripAnsi(text || "");
     if (mode === "replace") terminal.innerHTML = "";
@@ -236,6 +243,7 @@
     const q = numVal(quotaGb, 0);
     if (q < 0) throw new Error("Quota tidak valid.");
 
+    // XRAY: ga kirim password
     return { proto: p, username: u, days: d, quota_gb: q, iplimit: ip };
   }
 
@@ -370,11 +378,7 @@
       return;
     }
 
-    termWrite(`\n$ curl -X POST ${location.origin}${apiUrl(CFG.CREATE_PATH)} \\`, "append");
-    termWrite(`  -H "Authorization: Bearer ********" \\`, "append");
-    termWrite(`  -H "Content-Type: application/json" \\`, "append");
-    termWrite(`  -d '${JSON.stringify(payload)}'`, "append");
-
+    // NOTE: sesuai request lu — jangan tampilkan curl preview / log request
     outMeta.textContent = `Running... • ${nowStr()}`;
 
     let res, data;
@@ -421,8 +425,10 @@
       return;
     }
 
+    // SUCCESS: hapus semua log sebelumnya (termasuk Login success) lalu tampilkan output akun aja
     const out = data && data.output ? data.output : JSON.stringify(data);
-    termWrite(`\n${out}\n`, "append");
+    clearTerminal();
+    termWrite(out, "append");
     outMeta.textContent = `Done • ${nowStr()}`;
   });
 
