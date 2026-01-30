@@ -1,9 +1,9 @@
 (function () {
   const CFG = window.YINN_PANEL || {
-    API_BASE: "",              // same-origin
+    API_BASE: "",
     VERIFY_PATH: "/api/auth",
     CREATE_PATH: "/api/create",
-    HEALTH_PATH: "/health"
+    HEALTH_PATH: "/health",
   };
 
   const $ = (id) => document.getElementById(id);
@@ -32,8 +32,13 @@
   const btnCreate = $("btnCreate");
   const btnClearForm = $("btnClearForm");
   const btnCopyOut = $("btnCopyOut");
+  const btnToggleRaw = $("btnToggleRaw");
 
   const LS_KEY = "yinn_panel_token";
+
+  let SHOW_RAW = false;
+  let LAST_RAW = "";     // simpan raw terakhir
+  let LAST_SMART = "";   // simpan smart terakhir
 
   function setMsg(text, kind = "ok") {
     loginMsg.textContent = text;
@@ -62,7 +67,6 @@
   async function fetchJSON(url, opts = {}, timeoutMs = 12000) {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeoutMs);
-
     try {
       const res = await fetch(url, {
         cache: "no-store",
@@ -91,68 +95,128 @@
     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   }
 
-  // ========= OUTPUT FILTER =========
+  // ===== Output Cleaning =====
   function stripAnsi(s) {
     return (s || "").replace(/\x1b\[[0-9;]*m/g, "").replace(/\r/g, "");
   }
 
-  function cleanLine(line) {
-    let x = (line ?? "").toString();
-
-    // buang "-e " dari echo -e
-    x = x.replace(/^\s*-e\s+/g, "");
-
-    // buang noise unknown (autoscript sering begini)
-    if (/^'unknown'\s*:\s*I need something more specific\./i.test(x)) return "";
-    if (/I need something more specific\./i.test(x)) return "";
-
-    // buang loading spam
-    if (/^\s*loading\.\.\.\s*$/i.test(x)) return "";
-
-    return x;
+  function normalizeRaw(raw) {
+    const t = stripAnsi(raw || "");
+    const lines = t.split("\n").map(l => (l || "").replace(/^\s*-e\s+/g, "").replace(/[ \t]+$/g, ""));
+    // buang spam 'unknown'
+    const filtered = lines.filter(l => {
+      if (!l) return false;
+      if (/^'unknown'\s*:\s*I need something more specific\./i.test(l)) return false;
+      if (/I need something more specific\./i.test(l)) return false;
+      if (/^\s*loading\.\.\.\s*$/i.test(l)) return false;
+      return true;
+    });
+    return filtered.join("\n").trim();
   }
 
-  function filterOutput(raw) {
-    const t = stripAnsi(raw);
-    const lines = t.split("\n").map(cleanLine).filter(Boolean);
+  // ambil blok penting dari output autoscript (SSH/VMESS/VLESS/TROJAN beda-beda, kita pakai heuristic)
+  function smartExtract(raw) {
+    const t = normalizeRaw(raw);
+    if (!t) return "";
 
-    // rapihin spasi beruntun
-    const normalized = lines.map(l => l.replace(/[ \t]+$/g, ""));
+    const lines = t.split("\n");
 
-    return normalized.join("\n").trim();
+    const keep = [];
+    const importantKeys = [
+      "Username", "Password", "Host", "IP", "Domain", "Expired", "Limit Ip",
+      "Port", "OpenSSH", "Dropbear", "SSH WS", "SSH SSL", "WS", "WSS",
+      "Vmess", "Vless", "Trojan", "UUID", "Path", "TLS", "SNI",
+      "Link", "Config", "Public Key", "Pub Key", "Location", "Isp", "ASN"
+    ];
+
+    const keyRe = new RegExp(`^\\s*(${importantKeys.map(k=>k.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|")})\\b`, "i");
+
+    // keep judul box sederhana
+    const boxRe = /^(=+|─+|━+|╭|╰|┌|└|│|╞|╡|╭─|╰─|•)/;
+
+    for (const line of lines) {
+      const s = line.trim();
+      if (!s) continue;
+
+      // kalau ada indikasi error serius
+      if (/PERMISSION DENIED|Banned|404 NOT FOUND|Unauthorized/i.test(s)) {
+        keep.push(`[ERROR] ${s}`);
+        continue;
+      }
+
+      // simpan status sukses
+      if (/Status\s+Create/i.test(s) || /Create\s+(SSH|VMESS|VLESS|TROJAN)/i.test(s)) {
+        keep.push(s);
+        continue;
+      }
+
+      // simpan key-value penting
+      if (keyRe.test(s)) {
+        keep.push(s);
+        continue;
+      }
+
+      // simpan link yang jelas
+      if (/https?:\/\/\S+/i.test(s)) {
+        keep.push(s);
+        continue;
+      }
+
+      // simpan garis tapi dibatasi biar gak spam
+      if (boxRe.test(s) && s.length < 60) {
+        keep.push(s);
+        continue;
+      }
+    }
+
+    // fallback kalau heuristic terlalu ketat
+    if (keep.length < 6) return t;
+
+    // remove duplikat berurutan
+    const out = [];
+    for (const k of keep) {
+      if (out[out.length - 1] !== k) out.push(k);
+    }
+    return out.join("\n").trim();
   }
 
-  // ========= TERMINAL RENDER =========
-  function termWrite(text, mode = "append") {
-    const cleaned = filterOutput(text);
-
+  function renderTerminal(text, mode = "append", kind = "normal") {
+    const lines = (text || "").split("\n");
     if (mode === "replace") terminal.innerHTML = "";
 
-    const lines = cleaned ? cleaned.split("\n") : [];
     for (const line of lines) {
       const div = document.createElement("div");
       div.className = "term-line";
-
-      // highlight beberapa line penting
+      if (kind === "dim") div.classList.add("dim");
+      if (/^\[ERROR\]/i.test(line)) div.classList.add("hl-err");
       if (/Status\s+Create/i.test(line)) div.classList.add("hl-ok");
-      if (/Unauthorized|PERMISSION DENIED|Banned|NOT FOUND/i.test(line)) div.classList.add("hl-err");
-
-      div.textContent = line;
-      terminal.appendChild(div);
+      terminal.appendChild(div).textContent = line;
     }
-
     terminal.scrollTop = terminal.scrollHeight;
   }
 
+  function showOutput(raw) {
+    LAST_RAW = normalizeRaw(raw);
+    LAST_SMART = smartExtract(raw);
+
+    terminal.innerHTML = "";
+
+    if (SHOW_RAW) {
+      renderTerminal(LAST_RAW || "(empty)", "append");
+    } else {
+      renderTerminal(LAST_SMART || "(empty)", "append");
+      renderTerminal(`\n# Tip: klik "Raw" buat lihat full output`, "append", "dim");
+    }
+  }
+
   function getTerminalPlainText() {
-    // pastikan copy itu beneran plain text
     return Array.from(terminal.querySelectorAll(".term-line"))
       .map(el => el.textContent || "")
       .join("\n")
       .trim();
   }
 
-  // ========= HEALTH + VERIFY =========
+  // ===== Health + Verify =====
   async function checkHealth() {
     try {
       const { res } = await fetchJSON(apiUrl(CFG.HEALTH_PATH), { method: "GET" }, 8000);
@@ -170,7 +234,6 @@
     const url = apiUrl(CFG.VERIFY_PATH);
     const headers = { "Authorization": `Bearer ${t}` };
 
-    // POST dulu (sesuai app.py), fallback GET kalau 405
     let r = await fetchJSON(url, { method: "POST", headers }, 12000);
     if (r.res && r.res.status === 405) r = await fetchJSON(url, { method: "GET", headers }, 12000);
 
@@ -202,7 +265,7 @@
       const v = await verifyToken(t);
       if (v.ok) {
         showAppUI();
-        termWrite(`# Welcome, token verified\n# ${nowStr()}\n`, "replace");
+        showOutput(`# Welcome, token verified\n# ${nowStr()}\n`);
         outMeta.textContent = `Ready • ${nowStr()}`;
         return;
       }
@@ -211,7 +274,14 @@
     showLoginUI();
   }
 
-  // ========= EVENTS =========
+  // ===== Events =====
+  btnToggleRaw?.addEventListener("click", () => {
+    SHOW_RAW = !SHOW_RAW;
+    btnToggleRaw.textContent = SHOW_RAW ? "Smart" : "Raw";
+    // rerender last output
+    if (LAST_RAW || LAST_SMART) showOutput(LAST_RAW || LAST_SMART || "");
+  });
+
   btnLogin.addEventListener("click", async () => {
     hideMsg();
     const t = (tokenInput.value || "").trim();
@@ -224,7 +294,7 @@
     setToken(t);
     setMsg("Login sukses. Token valid ✅", "ok");
     showAppUI();
-    termWrite(`# Login success\n# ${nowStr()}\n`, "replace");
+    showOutput(`# Login success\n# ${nowStr()}\n`);
     outMeta.textContent = `Logged in • ${nowStr()}`;
   });
 
@@ -238,7 +308,7 @@
     tokenInput.value = "";
     showLoginUI();
     setMsg("Logout sukses. Token dihapus.", "ok");
-    termWrite(`# Logged out\n# ${nowStr()}\n`, "replace");
+    showOutput(`# Logged out\n# ${nowStr()}\n`);
     outMeta.textContent = `—`;
   });
 
@@ -256,14 +326,12 @@
       return;
     }
 
-    // Primary: Clipboard API
     try {
       await navigator.clipboard.writeText(text);
       outMeta.textContent = `Copied ✅ • ${nowStr()}`;
       return;
     } catch {}
 
-    // Fallback: execCommand copy (android kadang butuh ini)
     try {
       const ta = document.createElement("textarea");
       ta.value = text;
@@ -298,13 +366,8 @@
       days: Number(days.value || 1),
     };
 
-    termWrite(
-      `\n$ curl -X POST ${location.origin}${apiUrl(CFG.CREATE_PATH)} \\\n` +
-      `  -H "Authorization: Bearer ********" \\\n` +
-      `  -H "Content-Type: application/json" \\\n` +
-      `  -d '${JSON.stringify(payload)}'\n`,
-      "append"
-    );
+    // ✅ prompt singkat, gak spam
+    showOutput(`$ create ${payload.proto} user=${payload.username} iplimit=${payload.iplimit} days=${payload.days}\n`);
 
     outMeta.textContent = `Running... • ${nowStr()}`;
 
@@ -319,19 +382,19 @@
         body: JSON.stringify(payload),
       }, 180000));
     } catch (e) {
-      termWrite(`\n[ERROR] Network error: ${String(e)}\n`, "append");
+      showOutput(`[ERROR] Network error: ${String(e)}\n`);
       outMeta.textContent = `Failed • ${nowStr()}`;
       return;
     }
 
     if (!res) {
-      termWrite(`\n[ERROR] No response\n`, "append");
+      showOutput(`[ERROR] No response\n`);
       outMeta.textContent = `Failed • ${nowStr()}`;
       return;
     }
 
     if (res.status === 401) {
-      termWrite(`\n[401] Unauthorized — token invalid/revoked\n`, "append");
+      showOutput(`[401] Unauthorized — token invalid/revoked\n`);
       clearToken();
       showLoginUI();
       setMsg("Token invalid/revoked. Login ulang.", "err");
@@ -341,13 +404,13 @@
 
     if (!res.ok) {
       const msg = (data && (data.detail || data.message || data.error || data._raw)) || `HTTP ${res.status}`;
-      termWrite(`\n[ERROR] ${msg}\n`, "append");
+      showOutput(`[ERROR] ${msg}\n`);
       outMeta.textContent = `Failed • ${nowStr()}`;
       return;
     }
 
     const out = (data && data.output) ? data.output : JSON.stringify(data);
-    termWrite(`\n${out}\n`, "append");
+    showOutput(out + "\n");
     outMeta.textContent = `Done • ${nowStr()}`;
   });
 
