@@ -105,69 +105,64 @@ def _build_stdin(proto: str, username: str, password: str, iplimit: int, days: i
 def _clean_output(proto: str, raw: str) -> str:
     """
     CLEAN mode:
-    - remove ANSI + weird carriage returns
+    - remove ANSI
     - remove spam 'unknown: I need something more specific.'
     - remove 'loading...' lines
-    - remove /usr/local/sbin/addssh directory warning line
-    - remove banner blocks like "CREATE VMESS ACCOUNT" / "Create SSH Ovpn Account"
-    - keep the real result (status box + account details)
+    - remove addssh directory warning
+    - remove ONLY the banner title lines, keep decorative box/lines
     """
     text = _strip_ansi(raw)
     lines = [ln.rstrip() for ln in text.split("\n")]
 
-    cleaned: list[str] = []
-    skip_next_blank_after_banner = False
+    out_lines: list[str] = []
 
     for ln in lines:
         s = ln.strip()
 
-        # drop empty repeated lines but keep structure later
         if not s:
-            if skip_next_blank_after_banner:
-                continue
-            cleaned.append("")
+            out_lines.append("")
             continue
 
-        # drop known noise
+        # noise
         if any(x in ln for x in NOISE_SUBSTR) or NOISE_RE.search(ln):
             continue
         if LOADING_RE.match(ln):
             continue
-
-        # drop addssh warning line
         if ADDSSH_DIR_ERR_RE.match(ln):
             continue
 
-        # drop banner keywords and their decorative neighbors
-        if any(k.lower() in ln.lower() for k in BANNER_KEYWORDS):
-            skip_next_blank_after_banner = True
+        # remove banner title lines only (KEEP the decorative lines)
+        low = ln.lower()
+        if "cretae ssh ovpn account" in low or "create ssh ovpn account" in low:
             continue
-        if DECOR_RE.match(ln):
-            # only drop decor if it looks like a banner divider
+        if "create vmess account" in low:
+            continue
+        if "create vless account" in low:
+            continue
+        if "create trojan account" in low:
             continue
 
-        skip_next_blank_after_banner = False
-        cleaned.append(ln)
+        out_lines.append(ln)
 
-    # remove leading/trailing empty lines
-    while cleaned and not cleaned[0].strip():
-        cleaned.pop(0)
-    while cleaned and not cleaned[-1].strip():
-        cleaned.pop()
+    # trim leading/trailing blanks
+    while out_lines and not out_lines[0].strip():
+        out_lines.pop(0)
+    while out_lines and not out_lines[-1].strip():
+        out_lines.pop()
 
-    # collapse 3+ blank lines to max 2
-    out2: list[str] = []
-    blank_run = 0
-    for ln in cleaned:
-        if ln.strip() == "":
-            blank_run += 1
-            if blank_run <= 2:
-                out2.append("")
+    # collapse excessive blank lines
+    merged: list[str] = []
+    blank = 0
+    for ln in out_lines:
+        if not ln.strip():
+            blank += 1
+            if blank <= 2:
+                merged.append("")
         else:
-            blank_run = 0
-            out2.append(ln)
+            blank = 0
+            merged.append(ln)
 
-    return "\n".join(out2).strip()
+    return "\n".join(merged).strip()
 
 
 @app.get("/")
