@@ -182,7 +182,9 @@ body{
   border:1px solid rgba(255,255,255,0.10);
   border-radius: 18px;
   overflow: hidden;
-  background: rgba(0,0,0,0.32);
+
+  /* ✅ biar merata + linux feel */
+  background: #121316;
 }
 
 .term-head{
@@ -192,7 +194,9 @@ body{
   gap:10px;
   padding: 10px 12px;
   border-bottom: 1px solid rgba(255,255,255,0.08);
-  background: rgba(255,255,255,0.04);
+
+  /* ✅ header terminal agak terang dikit */
+  background: #1b1d22;
 }
 
 .term-title{
@@ -213,14 +217,38 @@ body{
 .term-dots span:nth-child(2){ background:#ffbd2e; }
 .term-dots span:nth-child(3){ background:#27c93f; }
 
+/* ✅ tombol Copy/Raw ke kanan */
+.term-actions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-left:auto;
+  justify-content:flex-end;
+}
+
+/* ✅ terminal area benar2 abu & rata */
 #terminal{
   padding: 12px;
   max-height: 460px;
   overflow:auto;
+
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 13px;
   line-height: 1.45;
-  color: rgba(255,255,255,0.88);
+
+  color: rgba(255,255,255,0.90);
+  background: #121316; /* ✅ penting: biar gak belang */
+}
+
+/* scrollbar (optional, tapi bikin kerasa “terminal”) */
+#terminal::-webkit-scrollbar{ width: 10px; }
+#terminal::-webkit-scrollbar-track{ background: rgba(255,255,255,0.04); }
+#terminal::-webkit-scrollbar-thumb{
+  background: rgba(255,255,255,0.18);
+  border-radius: 10px;
+}
+#terminal::-webkit-scrollbar-thumb:hover{
+  background: rgba(255,255,255,0.26);
 }
 
 .term-line{
@@ -228,5 +256,8 @@ body{
   word-break: break-word;
 }
 
-.term-line.hl-ok{ color: rgba(34,197,94,0.92); }
-.term-line.hl-err{ color: rgba(239,68,68,0.92); }
+/* highlight */
+.term-line.hl-ok{ color: rgba(34,197,94,0.95); }
+.term-line.hl-err{ color: rgba(239,68,68,0.95); }
+.term-line.hl-warn{ color: rgba(245,158,11,0.95); }
+.term-line.dim{ color: rgba(255,255,255,0.55); }
