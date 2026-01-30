@@ -1,9 +1,9 @@
 (function () {
   // =============== CONFIG (match app.py) ===============
   const CFG = window.YINN_PANEL || {
-    API_BASE: "",               // same-origin (recommended)
-    VERIFY_PATH: "/api/auth",   // app.py
-    CREATE_PATH: "/api/create", // app.py
+    API_BASE: "",
+    VERIFY_PATH: "/api/auth",
+    CREATE_PATH: "/api/create",
     HEALTH_PATH: "/health"
   };
 
@@ -22,10 +22,18 @@
 
   const proto = $("proto");
   const username = $("username");
-  const password = $("password");     // ssh only
+
+  // SSH only
+  const passRow = $("passRow");
+  const password = $("password");
+
+  // ALL proto
   const iplimit = $("iplimit");
   const days = $("days");
-  const quota = $("quota");           // <-- pastikan input ini ada di HTML (id="quota") untuk xray
+
+  // XRAY only
+  const quotaRow = $("quotaRow");
+  const quotaGb = $("quota_gb");
 
   const terminal = $("terminal");
   const outMeta = $("outMeta");
@@ -35,9 +43,7 @@
   const btnCreate = $("btnCreate");
   const btnClearForm = $("btnClearForm");
   const btnCopyOut = $("btnCopyOut");
-
-  // Password wrapper (optional) supaya bisa hide seluruh row
-  const passRow = $("passRow"); // kalau ada wrapper di HTML: <div id="passRow">...</div>
+  const btnToggleRaw = $("btnToggleRaw");
 
   const LS_KEY = "yinn_panel_token";
 
@@ -52,7 +58,9 @@
   }
 
   function setApiState(state, label) {
-    apiLed.className = "led " + (state === "ok" ? "led-ok" : state === "err" ? "led-err" : "led-warn");
+    apiLed.className =
+      "led " +
+      (state === "ok" ? "led-ok" : state === "err" ? "led-err" : "led-warn");
     apiText.textContent = label;
   }
 
@@ -75,17 +83,18 @@
   function nowStr() {
     const d = new Date();
     const pad = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(
+      d.getHours()
+    )}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   }
 
   function stripAnsi(s) {
-    return (s || "")
-      .replace(/\x1b\[[0-9;]*m/g, "")
-      .replace(/\r/g, "");
+    return (s || "").replace(/\x1b\[[0-9;]*m/g, "").replace(/\r/g, "");
   }
 
+  let RAW_MODE = false;
   function termWrite(text, mode = "append", cls = "") {
-    const t = stripAnsi(text);
+    const t = RAW_MODE ? (text || "") : stripAnsi(text || "");
     if (mode === "replace") terminal.innerHTML = "";
     const lines = t.split("\n");
     for (const line of lines) {
@@ -97,7 +106,7 @@
     terminal.scrollTop = terminal.scrollHeight;
   }
 
-  // =============== FETCH HELPERS (robust) ===============
+  // =============== FETCH HELPERS ===============
   async function fetchJSON(url, opts = {}, timeoutMs = 12000) {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeoutMs);
@@ -149,16 +158,12 @@
       "Cache-Control": "no-store"
     };
 
-    // try POST first (match app.py)
     let r = await fetchJSON(url, { method: "POST", headers }, 12000);
-
-    // fallback GET if Method Not Allowed
     if (r.res && r.res.status === 405) {
       r = await fetchJSON(url, { method: "GET", headers }, 12000);
     }
 
     const { res, data } = r;
-
     if (!res) return { ok: false, msg: "No response" };
     if (res.status === 401) return { ok: false, msg: "Token salah / revoked" };
 
@@ -183,71 +188,67 @@
     return ["vmess", "vless", "trojan"].includes((p || "").toLowerCase());
   }
 
+  function show(el, on) {
+    if (!el) return;
+    el.classList.toggle("hidden", !on);
+  }
+
   function syncFormByProto() {
     const p = (proto.value || "ssh").toLowerCase();
+    const x = isXray(p);
 
-    // SSH: password shown + required
-    if (!isXray(p)) {
-      if (passRow) passRow.style.display = "";
-      if (password) password.disabled = false;
-      if (password) password.placeholder = "password (min 1 char)";
-      return;
-    }
-
-    // XRAY: hide password row
-    if (passRow) passRow.style.display = "none";
+    // SSH: password visible
+    show(passRow, !x);
     if (password) {
-      password.value = "";
-      password.disabled = true;
+      password.disabled = x;
+      if (x) password.value = "";
     }
+
+    // XRAY: quota visible
+    show(quotaRow, x);
+    if (quotaGb) {
+      quotaGb.disabled = !x;
+      if (!x) quotaGb.value = "0";
+    }
+  }
+
+  function numVal(el, fallback) {
+    const n = Number((el && el.value) || "");
+    return Number.isFinite(n) ? n : fallback;
   }
 
   function buildPayload() {
     const p = (proto.value || "ssh").toLowerCase();
     const u = (username.value || "").trim();
-    const d = Number(days.value || 1);
-    const ip = Number(iplimit.value || 0);
+    const d = numVal(days, 1);
+    const ip = numVal(iplimit, 0);
 
     if (!u) throw new Error("Username wajib diisi.");
+    if (d < 1) throw new Error("Expired minimal 1 hari.");
+    if (ip < 0) throw new Error("Limit IP tidak valid.");
 
-    // SSH
     if (!isXray(p)) {
-      const pw = (password.value || "").trim();
+      const pw = (password && password.value ? password.value : "").trim();
       if (pw.length < 1) throw new Error("Password minimal 1 karakter.");
-      return {
-        proto: p,
-        username: u,
-        password: pw,
-        iplimit: ip,
-        days: d
-      };
+      return { proto: p, username: u, password: pw, iplimit: ip, days: d };
     }
 
-    // XRAY: username + days + quota_gb + iplimit
-    const q = quota ? Number(quota.value || 0) : 0;
+    const q = numVal(quotaGb, 0);
+    if (q < 0) throw new Error("Quota tidak valid.");
 
-    // password tidak dikirim
-    return {
-      proto: p,
-      username: u,
-      days: d,
-      quota_gb: q,
-      iplimit: ip
-    };
+    return { proto: p, username: u, days: d, quota_gb: q, iplimit: ip };
   }
 
-  // =============== COPY OUTPUT (real copy) ===============
+  // =============== COPY OUTPUT ===============
   async function copyToClipboard(text) {
     const t = (text || "").trim();
     if (!t) return false;
 
-    // modern
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(t);
       return true;
     }
 
-    // fallback
     const ta = document.createElement("textarea");
     ta.value = t;
     ta.style.position = "fixed";
@@ -281,9 +282,9 @@
       const v = await verifyToken(t);
       if (v.ok) {
         showAppUI();
-        termWrite(`# Welcome, token verified`, "replace", "hl-ok");
+        termWrite(`# Login success`, "replace", "hl-ok");
         termWrite(`# ${nowStr()}`, "append");
-        outMeta.textContent = `Ready • ${nowStr()}`;
+        outMeta.textContent = `Logged in • ${nowStr()}`;
         return;
       }
     }
@@ -291,9 +292,7 @@
   }
 
   // =============== EVENTS ===============
-  proto.addEventListener("change", () => {
-    syncFormByProto();
-  });
+  proto.addEventListener("change", syncFormByProto);
 
   btnLogin.addEventListener("click", async () => {
     hideMsg();
@@ -332,7 +331,7 @@
     if (password) password.value = "";
     iplimit.value = "2";
     days.value = "1";
-    if (quota) quota.value = "0";
+    if (quotaGb) quotaGb.value = "0";
     syncFormByProto();
   });
 
@@ -345,6 +344,14 @@
       outMeta.textContent = `Copy failed • ${nowStr()}`;
     }
   });
+
+  if (btnToggleRaw) {
+    btnToggleRaw.addEventListener("click", () => {
+      RAW_MODE = !RAW_MODE;
+      btnToggleRaw.textContent = RAW_MODE ? "Clean" : "Raw";
+      outMeta.textContent = `Mode: ${RAW_MODE ? "RAW" : "CLEAN"} • ${nowStr()}`;
+    });
+  }
 
   btnCreate.addEventListener("click", async () => {
     const t = getToken();
@@ -363,11 +370,7 @@
       return;
     }
 
-    // show curl preview
-    termWrite(
-      `\n$ curl -X POST ${location.origin}${apiUrl(CFG.CREATE_PATH)} \\`,
-      "append"
-    );
+    termWrite(`\n$ curl -X POST ${location.origin}${apiUrl(CFG.CREATE_PATH)} \\`, "append");
     termWrite(`  -H "Authorization: Bearer ********" \\`, "append");
     termWrite(`  -H "Content-Type: application/json" \\`, "append");
     termWrite(`  -d '${JSON.stringify(payload)}'`, "append");
@@ -410,14 +413,15 @@
     }
 
     if (!res.ok) {
-      const msg = (data && (data.detail || data.message || data.error || data._raw)) || `HTTP ${res.status}`;
+      const msg =
+        (data && (data.detail || data.message || data.error || data._raw)) ||
+        `HTTP ${res.status}`;
       termWrite(`\n[ERROR] ${msg}\n`, "append", "hl-err");
       outMeta.textContent = `Failed • ${nowStr()}`;
       return;
     }
 
-    // success output
-    const out = (data && data.output) ? data.output : JSON.stringify(data);
+    const out = data && data.output ? data.output : JSON.stringify(data);
     termWrite(`\n${out}\n`, "append");
     outMeta.textContent = `Done • ${nowStr()}`;
   });
