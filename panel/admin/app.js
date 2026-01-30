@@ -5,6 +5,7 @@
 // - fetchJSON robust (handles HTML 200, json parse fail)
 // - terminal output strips ANSI
 // - no cache + timeout + abort controller
+console.log("YINN PANEL app.js LOADED v2", new Date().toISOString());
 (function () {
   const CFG = window.YINN_PANEL || {
     API_BASE: "",              // same-origin
