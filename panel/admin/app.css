@@ -229,15 +229,14 @@ body{
 /* ✅ terminal area benar2 abu & rata */
 #terminal{
   padding: 12px;
-  max-height: 460px;
-  overflow:auto;
-
+  /* FIX: jangan dipotong */
+  max-height: none;        /* dulu 460px */
+  height: auto;
+  overflow: visible;       /* dulu auto */
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 13px;
   line-height: 1.45;
-
-  color: rgba(255,255,255,0.90);
-  background: #121316; /* ✅ penting: biar gak belang */
+  color: rgba(255,255,255,0.88);
 }
 
 /* scrollbar (optional, tapi bikin kerasa “terminal”) */
