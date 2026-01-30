@@ -1,13 +1,15 @@
 (function () {
+  // =============== CONFIG (match app.py) ===============
   const CFG = window.YINN_PANEL || {
-    API_BASE: "",
-    VERIFY_PATH: "/api/auth",
-    CREATE_PATH: "/api/create",
-    HEALTH_PATH: "/health",
+    API_BASE: "",               // same-origin (recommended)
+    VERIFY_PATH: "/api/auth",   // app.py
+    CREATE_PATH: "/api/create", // app.py
+    HEALTH_PATH: "/health"
   };
 
   const $ = (id) => document.getElementById(id);
 
+  // =============== ELEMENTS ===============
   const loginCard = $("loginCard");
   const appCard = $("appCard");
 
@@ -20,9 +22,10 @@
 
   const proto = $("proto");
   const username = $("username");
-  const password = $("password");
+  const password = $("password");     // ssh only
   const iplimit = $("iplimit");
   const days = $("days");
+  const quota = $("quota");           // <-- pastikan input ini ada di HTML (id="quota") untuk xray
 
   const terminal = $("terminal");
   const outMeta = $("outMeta");
@@ -32,14 +35,13 @@
   const btnCreate = $("btnCreate");
   const btnClearForm = $("btnClearForm");
   const btnCopyOut = $("btnCopyOut");
-  const btnToggleRaw = $("btnToggleRaw");
+
+  // Password wrapper (optional) supaya bisa hide seluruh row
+  const passRow = $("passRow"); // kalau ada wrapper di HTML: <div id="passRow">...</div>
 
   const LS_KEY = "yinn_panel_token";
 
-  let SHOW_RAW = false;
-  let LAST_RAW = "";     // simpan raw terakhir
-  let LAST_SMART = "";   // simpan smart terakhir
-
+  // =============== UI HELPERS ===============
   function setMsg(text, kind = "ok") {
     loginMsg.textContent = text;
     loginMsg.className = `msg show ${kind}`;
@@ -49,13 +51,19 @@
     loginMsg.textContent = "";
   }
 
-  function getToken() { return localStorage.getItem(LS_KEY) || ""; }
-  function setToken(t) { localStorage.setItem(LS_KEY, t); }
-  function clearToken() { localStorage.removeItem(LS_KEY); }
-
   function setApiState(state, label) {
     apiLed.className = "led " + (state === "ok" ? "led-ok" : state === "err" ? "led-err" : "led-warn");
     apiText.textContent = label;
+  }
+
+  function getToken() {
+    return localStorage.getItem(LS_KEY) || "";
+  }
+  function setToken(t) {
+    localStorage.setItem(LS_KEY, t);
+  }
+  function clearToken() {
+    localStorage.removeItem(LS_KEY);
   }
 
   function apiUrl(path) {
@@ -64,9 +72,36 @@
     return `${base}${p}`;
   }
 
+  function nowStr() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  function stripAnsi(s) {
+    return (s || "")
+      .replace(/\x1b\[[0-9;]*m/g, "")
+      .replace(/\r/g, "");
+  }
+
+  function termWrite(text, mode = "append", cls = "") {
+    const t = stripAnsi(text);
+    if (mode === "replace") terminal.innerHTML = "";
+    const lines = t.split("\n");
+    for (const line of lines) {
+      const div = document.createElement("div");
+      div.className = "term-line" + (cls ? ` ${cls}` : "");
+      div.textContent = line;
+      terminal.appendChild(div);
+    }
+    terminal.scrollTop = terminal.scrollHeight;
+  }
+
+  // =============== FETCH HELPERS (robust) ===============
   async function fetchJSON(url, opts = {}, timeoutMs = 12000) {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeoutMs);
+
     try {
       const res = await fetch(url, {
         cache: "no-store",
@@ -74,149 +109,26 @@
         signal: controller.signal,
         ...opts,
         headers: {
-          "Accept": "application/json",
+          Accept: "application/json",
           "Cache-Control": "no-cache",
-          ...(opts.headers || {}),
-        },
+          ...(opts.headers || {})
+        }
       });
 
-      let data = null;
       const text = await res.text();
-      try { data = text ? JSON.parse(text) : null; } catch { data = { _raw: text || "" }; }
+      let data = null;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        data = { _raw: text || "" };
+      }
       return { res, data };
     } finally {
       clearTimeout(id);
     }
   }
 
-  function nowStr() {
-    const d = new Date();
-    const pad = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-  }
-
-  // ===== Output Cleaning =====
-  function stripAnsi(s) {
-    return (s || "").replace(/\x1b\[[0-9;]*m/g, "").replace(/\r/g, "");
-  }
-
-  function normalizeRaw(raw) {
-    const t = stripAnsi(raw || "");
-    const lines = t.split("\n").map(l => (l || "").replace(/^\s*-e\s+/g, "").replace(/[ \t]+$/g, ""));
-    // buang spam 'unknown'
-    const filtered = lines.filter(l => {
-      if (!l) return false;
-      if (/^'unknown'\s*:\s*I need something more specific\./i.test(l)) return false;
-      if (/I need something more specific\./i.test(l)) return false;
-      if (/^\s*loading\.\.\.\s*$/i.test(l)) return false;
-      return true;
-    });
-    return filtered.join("\n").trim();
-  }
-
-  // ambil blok penting dari output autoscript (SSH/VMESS/VLESS/TROJAN beda-beda, kita pakai heuristic)
-  function smartExtract(raw) {
-    const t = normalizeRaw(raw);
-    if (!t) return "";
-
-    const lines = t.split("\n");
-
-    const keep = [];
-    const importantKeys = [
-      "Username", "Password", "Host", "IP", "Domain", "Expired", "Limit Ip",
-      "Port", "OpenSSH", "Dropbear", "SSH WS", "SSH SSL", "WS", "WSS",
-      "Vmess", "Vless", "Trojan", "UUID", "Path", "TLS", "SNI",
-      "Link", "Config", "Public Key", "Pub Key", "Location", "Isp", "ASN"
-    ];
-
-    const keyRe = new RegExp(`^\\s*(${importantKeys.map(k=>k.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|")})\\b`, "i");
-
-    // keep judul box sederhana
-    const boxRe = /^(=+|─+|━+|╭|╰|┌|└|│|╞|╡|╭─|╰─|•)/;
-
-    for (const line of lines) {
-      const s = line.trim();
-      if (!s) continue;
-
-      // kalau ada indikasi error serius
-      if (/PERMISSION DENIED|Banned|404 NOT FOUND|Unauthorized/i.test(s)) {
-        keep.push(`[ERROR] ${s}`);
-        continue;
-      }
-
-      // simpan status sukses
-      if (/Status\s+Create/i.test(s) || /Create\s+(SSH|VMESS|VLESS|TROJAN)/i.test(s)) {
-        keep.push(s);
-        continue;
-      }
-
-      // simpan key-value penting
-      if (keyRe.test(s)) {
-        keep.push(s);
-        continue;
-      }
-
-      // simpan link yang jelas
-      if (/https?:\/\/\S+/i.test(s)) {
-        keep.push(s);
-        continue;
-      }
-
-      // simpan garis tapi dibatasi biar gak spam
-      if (boxRe.test(s) && s.length < 60) {
-        keep.push(s);
-        continue;
-      }
-    }
-
-    // fallback kalau heuristic terlalu ketat
-    if (keep.length < 6) return t;
-
-    // remove duplikat berurutan
-    const out = [];
-    for (const k of keep) {
-      if (out[out.length - 1] !== k) out.push(k);
-    }
-    return out.join("\n").trim();
-  }
-
-  function renderTerminal(text, mode = "append", kind = "normal") {
-    const lines = (text || "").split("\n");
-    if (mode === "replace") terminal.innerHTML = "";
-
-    for (const line of lines) {
-      const div = document.createElement("div");
-      div.className = "term-line";
-      if (kind === "dim") div.classList.add("dim");
-      if (/^\[ERROR\]/i.test(line)) div.classList.add("hl-err");
-      if (/Status\s+Create/i.test(line)) div.classList.add("hl-ok");
-      terminal.appendChild(div).textContent = line;
-    }
-    terminal.scrollTop = terminal.scrollHeight;
-  }
-
-  function showOutput(raw) {
-    LAST_RAW = normalizeRaw(raw);
-    LAST_SMART = smartExtract(raw);
-
-    terminal.innerHTML = "";
-
-    if (SHOW_RAW) {
-      renderTerminal(LAST_RAW || "(empty)", "append");
-    } else {
-      renderTerminal(LAST_SMART || "(empty)", "append");
-      renderTerminal(`\n# Tip: klik "Raw" buat lihat full output`, "append", "dim");
-    }
-  }
-
-  function getTerminalPlainText() {
-    return Array.from(terminal.querySelectorAll(".term-line"))
-      .map(el => el.textContent || "")
-      .join("\n")
-      .trim();
-  }
-
-  // ===== Health + Verify =====
+  // =============== API CHECKS ===============
   async function checkHealth() {
     try {
       const { res } = await fetchJSON(apiUrl(CFG.HEALTH_PATH), { method: "GET" }, 8000);
@@ -232,22 +144,124 @@
     if (!t) return { ok: false, msg: "Token kosong." };
 
     const url = apiUrl(CFG.VERIFY_PATH);
-    const headers = { "Authorization": `Bearer ${t}` };
+    const headers = {
+      Authorization: `Bearer ${t}`,
+      "Cache-Control": "no-store"
+    };
 
+    // try POST first (match app.py)
     let r = await fetchJSON(url, { method: "POST", headers }, 12000);
-    if (r.res && r.res.status === 405) r = await fetchJSON(url, { method: "GET", headers }, 12000);
+
+    // fallback GET if Method Not Allowed
+    if (r.res && r.res.status === 405) {
+      r = await fetchJSON(url, { method: "GET", headers }, 12000);
+    }
 
     const { res, data } = r;
+
     if (!res) return { ok: false, msg: "No response" };
     if (res.status === 401) return { ok: false, msg: "Token salah / revoked" };
 
-    const okFlag = !!(data && (data.ok === true || data.success === true || data.valid === true || data.authorized === true));
+    const okFlag =
+      data &&
+      (data.ok === true ||
+        data.success === true ||
+        data.valid === true ||
+        data.authorized === true);
+
     if (res.ok && (okFlag || res.status === 200)) return { ok: true, msg: "Token valid" };
 
-    const detail = (data && (data.detail || data.message || data.error || data._raw)) || `Verify gagal (${res.status})`;
+    const detail =
+      (data && (data.detail || data.message || data.error || data._raw)) ||
+      `Verify gagal (${res.status})`;
+
     return { ok: false, msg: detail };
   }
 
+  // =============== FORM LOGIC: SSH vs XRAY ===============
+  function isXray(p) {
+    return ["vmess", "vless", "trojan"].includes((p || "").toLowerCase());
+  }
+
+  function syncFormByProto() {
+    const p = (proto.value || "ssh").toLowerCase();
+
+    // SSH: password shown + required
+    if (!isXray(p)) {
+      if (passRow) passRow.style.display = "";
+      if (password) password.disabled = false;
+      if (password) password.placeholder = "password (min 1 char)";
+      return;
+    }
+
+    // XRAY: hide password row
+    if (passRow) passRow.style.display = "none";
+    if (password) {
+      password.value = "";
+      password.disabled = true;
+    }
+  }
+
+  function buildPayload() {
+    const p = (proto.value || "ssh").toLowerCase();
+    const u = (username.value || "").trim();
+    const d = Number(days.value || 1);
+    const ip = Number(iplimit.value || 0);
+
+    if (!u) throw new Error("Username wajib diisi.");
+
+    // SSH
+    if (!isXray(p)) {
+      const pw = (password.value || "").trim();
+      if (pw.length < 1) throw new Error("Password minimal 1 karakter.");
+      return {
+        proto: p,
+        username: u,
+        password: pw,
+        iplimit: ip,
+        days: d
+      };
+    }
+
+    // XRAY: username + days + quota_gb + iplimit
+    const q = quota ? Number(quota.value || 0) : 0;
+
+    // password tidak dikirim
+    return {
+      proto: p,
+      username: u,
+      days: d,
+      quota_gb: q,
+      iplimit: ip
+    };
+  }
+
+  // =============== COPY OUTPUT (real copy) ===============
+  async function copyToClipboard(text) {
+    const t = (text || "").trim();
+    if (!t) return false;
+
+    // modern
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(t);
+      return true;
+    }
+
+    // fallback
+    const ta = document.createElement("textarea");
+    ta.value = t;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  // =============== UI SWITCH ===============
   function showAppUI() {
     loginCard.classList.add("hidden");
     appCard.classList.remove("hidden");
@@ -257,29 +271,28 @@
     loginCard.classList.remove("hidden");
   }
 
+  // =============== BOOT ===============
   async function boot() {
     await checkHealth();
+    syncFormByProto();
 
     const t = getToken();
     if (t) {
       const v = await verifyToken(t);
       if (v.ok) {
         showAppUI();
-        showOutput(`# Welcome, token verified\n# ${nowStr()}\n`);
+        termWrite(`# Welcome, token verified`, "replace", "hl-ok");
+        termWrite(`# ${nowStr()}`, "append");
         outMeta.textContent = `Ready • ${nowStr()}`;
         return;
       }
     }
-
     showLoginUI();
   }
 
-  // ===== Events =====
-  btnToggleRaw?.addEventListener("click", () => {
-    SHOW_RAW = !SHOW_RAW;
-    btnToggleRaw.textContent = SHOW_RAW ? "Smart" : "Raw";
-    // rerender last output
-    if (LAST_RAW || LAST_SMART) showOutput(LAST_RAW || LAST_SMART || "");
+  // =============== EVENTS ===============
+  proto.addEventListener("change", () => {
+    syncFormByProto();
   });
 
   btnLogin.addEventListener("click", async () => {
@@ -294,7 +307,8 @@
     setToken(t);
     setMsg("Login sukses. Token valid ✅", "ok");
     showAppUI();
-    showOutput(`# Login success\n# ${nowStr()}\n`);
+    termWrite(`# Login success`, "replace", "hl-ok");
+    termWrite(`# ${nowStr()}`, "append");
     outMeta.textContent = `Logged in • ${nowStr()}`;
   });
 
@@ -308,43 +322,25 @@
     tokenInput.value = "";
     showLoginUI();
     setMsg("Logout sukses. Token dihapus.", "ok");
-    showOutput(`# Logged out\n# ${nowStr()}\n`);
+    termWrite(`# Logged out`, "replace");
+    termWrite(`# ${nowStr()}`, "append");
     outMeta.textContent = `—`;
   });
 
   btnClearForm.addEventListener("click", () => {
     username.value = "";
-    password.value = "";
+    if (password) password.value = "";
     iplimit.value = "2";
     days.value = "1";
+    if (quota) quota.value = "0";
+    syncFormByProto();
   });
 
   btnCopyOut.addEventListener("click", async () => {
-    const text = getTerminalPlainText();
-    if (!text) {
-      outMeta.textContent = `Nothing to copy • ${nowStr()}`;
-      return;
-    }
-
+    const text = terminal.innerText || "";
     try {
-      await navigator.clipboard.writeText(text);
-      outMeta.textContent = `Copied ✅ • ${nowStr()}`;
-      return;
-    } catch {}
-
-    try {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.setAttribute("readonly", "");
-      ta.style.position = "fixed";
-      ta.style.left = "-9999px";
-      ta.style.top = "-9999px";
-      document.body.appendChild(ta);
-      ta.select();
-      ta.setSelectionRange(0, ta.value.length);
-      const ok = document.execCommand("copy");
-      document.body.removeChild(ta);
-      outMeta.textContent = ok ? `Copied ✅ • ${nowStr()}` : `Copy failed • ${nowStr()}`;
+      const ok = await copyToClipboard(text);
+      outMeta.textContent = (ok ? `Copied` : `Copy failed`) + ` • ${nowStr()}`;
     } catch {
       outMeta.textContent = `Copy failed • ${nowStr()}`;
     }
@@ -358,43 +354,54 @@
       return;
     }
 
-    const payload = {
-      proto: (proto.value || "ssh"),
-      username: (username.value || "").trim(),
-      password: (password.value || "").trim(),
-      iplimit: Number(iplimit.value || 0),
-      days: Number(days.value || 1),
-    };
+    let payload;
+    try {
+      payload = buildPayload();
+    } catch (e) {
+      termWrite(`\n[ERROR] ${String(e.message || e)}\n`, "append", "hl-err");
+      outMeta.textContent = `Failed • ${nowStr()}`;
+      return;
+    }
 
-    // ✅ prompt singkat, gak spam
-    showOutput(`$ create ${payload.proto} user=${payload.username} iplimit=${payload.iplimit} days=${payload.days}\n`);
+    // show curl preview
+    termWrite(
+      `\n$ curl -X POST ${location.origin}${apiUrl(CFG.CREATE_PATH)} \\`,
+      "append"
+    );
+    termWrite(`  -H "Authorization: Bearer ********" \\`, "append");
+    termWrite(`  -H "Content-Type: application/json" \\`, "append");
+    termWrite(`  -d '${JSON.stringify(payload)}'`, "append");
 
     outMeta.textContent = `Running... • ${nowStr()}`;
 
     let res, data;
     try {
-      ({ res, data } = await fetchJSON(apiUrl(CFG.CREATE_PATH), {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${t}`,
-          "Content-Type": "application/json",
+      ({ res, data } = await fetchJSON(
+        apiUrl(CFG.CREATE_PATH),
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${t}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
         },
-        body: JSON.stringify(payload),
-      }, 180000));
+        180000
+      ));
     } catch (e) {
-      showOutput(`[ERROR] Network error: ${String(e)}\n`);
+      termWrite(`\n[ERROR] Network error: ${String(e)}\n`, "append", "hl-err");
       outMeta.textContent = `Failed • ${nowStr()}`;
       return;
     }
 
     if (!res) {
-      showOutput(`[ERROR] No response\n`);
+      termWrite(`\n[ERROR] No response\n`, "append", "hl-err");
       outMeta.textContent = `Failed • ${nowStr()}`;
       return;
     }
 
     if (res.status === 401) {
-      showOutput(`[401] Unauthorized — token invalid/revoked\n`);
+      termWrite(`\n[401] Unauthorized — token invalid/revoked\n`, "append", "hl-err");
       clearToken();
       showLoginUI();
       setMsg("Token invalid/revoked. Login ulang.", "err");
@@ -404,16 +411,18 @@
 
     if (!res.ok) {
       const msg = (data && (data.detail || data.message || data.error || data._raw)) || `HTTP ${res.status}`;
-      showOutput(`[ERROR] ${msg}\n`);
+      termWrite(`\n[ERROR] ${msg}\n`, "append", "hl-err");
       outMeta.textContent = `Failed • ${nowStr()}`;
       return;
     }
 
+    // success output
     const out = (data && data.output) ? data.output : JSON.stringify(data);
-    showOutput(out + "\n");
+    termWrite(`\n${out}\n`, "append");
     outMeta.textContent = `Done • ${nowStr()}`;
   });
 
+  // =============== START ===============
   boot();
   setInterval(checkHealth, 8000);
 })();
