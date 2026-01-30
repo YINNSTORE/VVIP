@@ -180,4 +180,11 @@ def create(req: CreateReq, authorization: Optional[str] = Header(default=None)):
     if re.search(r"PERMISSION DENIED|Banned|404 NOT FOUND|Unauthorized", out, re.I):
         raise HTTPException(status_code=500, detail=out[-2000:])
 
-    return {"ok": True, "output": out[-8000:]}
+MAX_HEAD = 20000
+MAX_TAIL = 80000
+
+head = out[:MAX_HEAD]
+tail = out[-MAX_TAIL:] if len(out) > MAX_TAIL else out
+merged = head + ("\n\n... (trimmed) ...\n\n" if len(out) > (MAX_HEAD + MAX_TAIL) else "\n") + tail
+
+return {"ok": True, "output": merged, "trimmed": len(out) > (MAX_HEAD + MAX_TAIL)}
