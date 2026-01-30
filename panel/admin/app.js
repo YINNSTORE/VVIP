@@ -1,11 +1,11 @@
 (function () {
   // FIX: default config harus match API lu
   const CFG = window.YINN_PANEL || {
-    API_BASE: "",                 // kosong = same-origin
-    VERIFY_PATH: "/api/auth",     // ✅ FIX (bukan /api/auth/verify)
-    CREATE_PATH: "/api/create",
-    HEALTH_PATH: "/health"
-  };
+  API_BASE: "",              // same-origin
+  VERIFY_PATH: "/api/auth",  // sesuai app.py
+  CREATE_PATH: "/api/create",
+  HEALTH_PATH: "/health"
+};
 
   const $ = (id) => document.getElementById(id);
 
