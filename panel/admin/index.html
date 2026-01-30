@@ -35,6 +35,7 @@
         <div class="muted">Masukkan token panel untuk akses Admin.</div>
 
         <div style="height:10px"></div>
+
         <div class="row">
           <input id="tokenInput" class="input" placeholder="Panel Token" autocomplete="off" />
           <div class="muted">Token disimpan lokal (localStorage). Logout untuk hapus.</div>
@@ -43,6 +44,7 @@
             <button id="btnLogin" class="btn primary">Validate & Login</button>
             <button id="btnClearToken" class="btn">Clear</button>
           </div>
+
           <div id="loginMsg" class="msg"></div>
         </div>
       </div>
@@ -53,7 +55,7 @@
 
         <div class="row two">
           <div>
-            <div class="muted">Pilih Protoxol</div>
+            <div class="muted">Pilih Protokol</div>
             <select id="proto" class="input">
               <option value="ssh">SSH</option>
               <option value="vmess">VMESS</option>
@@ -63,25 +65,39 @@
           </div>
           <div>
             <div class="muted">Username</div>
-            <input id="username" class="input" placeholder="username" />
+            <input id="username" class="input" placeholder="username" autocomplete="off" />
           </div>
         </div>
 
-        <div class="row two">
+        <!-- SSH ONLY (auto hide by app.js for XRAY) -->
+        <div id="passRow" class="row two">
           <div>
-            <div class="muted">Password</div>
-            <input id="password" class="input" placeholder="password" />
+            <div class="muted">Password (SSH only)</div>
+            <input id="password" class="input" placeholder="password" autocomplete="off" />
           </div>
           <div>
             <div class="muted">Limit IP</div>
-            <input id="iplimit" class="input" type="number" value="2" />
+            <input id="iplimit" class="input" type="number" value="2" min="0" />
+          </div>
+        </div>
+
+        <!-- XRAY ONLY (vmess/vless/trojan) -->
+        <div id="quotaRow" class="row two">
+          <div>
+            <div class="muted">Limit Quota (GB) — XRAY only</div>
+            <input id="quota" class="input" type="number" value="0" min="0" />
+            <div class="muted">0 = unlimited</div>
+          </div>
+          <div>
+            <div class="muted">Limit IP</div>
+            <input id="iplimit2" class="input" type="number" value="2" min="0" />
           </div>
         </div>
 
         <div class="row two">
           <div>
             <div class="muted">Expired (Days)</div>
-            <input id="days" class="input" type="number" value="1" />
+            <input id="days" class="input" type="number" value="1" min="1" />
           </div>
           <div class="actions" style="align-items:flex-end;">
             <button id="btnCreate" class="btn primary">Create</button>
@@ -94,17 +110,18 @@
         <h2>Output</h2>
         <div class="terminal-wrap">
           <div class="term-head">
-  <div class="term-title">
-    <div class="term-dots"><span></span><span></span><span></span></div>
-    <span>terminal</span>
-  </div>
+            <div class="term-title">
+              <div class="term-dots"><span></span><span></span><span></span></div>
+              <span>terminal</span>
+            </div>
 
-  <div class="term-actions">
-    <button id="btnToggleRaw" class="btn">Raw</button>
-    <button id="btnCopyOut" class="btn">Copy</button>
-    <span id="outMeta" class="muted">—</span>
-  </div>
-</div>
+            <div class="term-actions">
+              <button id="btnToggleRaw" class="btn">Raw</button>
+              <button id="btnCopyOut" class="btn">Copy</button>
+              <span id="outMeta" class="muted">—</span>
+            </div>
+          </div>
+
           <div id="terminal"></div>
         </div>
       </div>
@@ -113,5 +130,23 @@
   </div>
 
   <script src="app.js"></script>
+
+  <!-- Small inline bridge: keep iplimit single source -->
+  <script>
+    // Optional helper:
+    // because we have 2 iplimit inputs (ssh row vs xray row),
+    // we mirror them so app.js can just read #iplimit.
+    (function(){
+      const ip1 = document.getElementById("iplimit");
+      const ip2 = document.getElementById("iplimit2");
+      if (!ip1 || !ip2) return;
+
+      const sync = (from, to) => {
+        to.value = from.value;
+      };
+      ip1.addEventListener("input", () => sync(ip1, ip2));
+      ip2.addEventListener("input", () => sync(ip2, ip1));
+    })();
+  </script>
 </body>
 </html>
