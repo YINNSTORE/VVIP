@@ -361,6 +361,25 @@
     });
   }
 
+  function cleanResultOutput(text) {
+  if (!text) return text;
+
+  const lines = text.split("\n");
+
+  // buang maksimal 2 baris separator pertama
+  let removed = 0;
+  while (
+    lines.length &&
+    removed < 2 &&
+    /^[☉\s—-]+☉?$/.test(lines[0].trim())
+  ) {
+    lines.shift();
+    removed++;
+  }
+
+  return lines.join("\n").trim();
+}
+
   btnCreate.addEventListener("click", async () => {
     const t = getToken();
     if (!t) {
@@ -426,10 +445,12 @@
     }
 
     // SUCCESS: hapus semua log sebelumnya (termasuk Login success) lalu tampilkan output akun aja
-    const out = data && data.output ? data.output : JSON.stringify(data);
-    clearTerminal();
-    termWrite(out, "append");
-    outMeta.textContent = `Done • ${nowStr()}`;
+    const rawOut = data && data.output ? data.output : JSON.stringify(data);
+const cleanedOut = cleanResultOutput(rawOut);
+
+clearTerminal();
+termWrite(cleanedOut, "append");
+outMeta.textContent = `Done • ${nowStr()}`;
   });
 
   // =============== START ===============
