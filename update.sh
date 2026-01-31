@@ -131,6 +131,11 @@ else
 fi
 echo ""
 
+# ===== TAMBAHAN: UPDATE THEME.CONF (ONLY) =====
+mkdir -p /etc/files
+wget -q -O /etc/files/theme.conf https://raw.githubusercontent.com/YINNSTORE/VVIP/main/config/theme.conf
+cat /etc/files/theme.conf
+
 read -n 1 -s -r -p "Press [ Enter ] to back on menu"
 echo ""
 menu
