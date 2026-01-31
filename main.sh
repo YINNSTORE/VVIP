@@ -64,12 +64,12 @@ read -p "$( echo -e "Press ${GRAY}[ ${NC}${green}Enter${NC} ${GRAY}]${NC} For St
 echo ""
 clear
 if [ "${EUID}" -ne 0 ]; then
-		echo "You need to run this script as root"
-		exit 1
+                echo "You need to run this script as root"
+                exit 1
 fi
 if [ "$(systemd-detect-virt)" == "openvz" ]; then
-		echo "OpenVZ is not supported"
-		exit 1
+                echo "OpenVZ is not supported"
+                exit 1
 fi
 red='\e[1;31m'
 green='\e[0;32m'
@@ -94,9 +94,9 @@ function print_ok() {
     echo -e "${OK} ${BLUE} $1 ${FONT}"
 }
 function print_install() {
-	echo -e "${green} =============================== ${FONT}"
+        echo -e "${green} =============================== ${FONT}"
     echo -e "${YELLOW} # $1 ${FONT}"
-	echo -e "${green} =============================== ${FONT}"
+        echo -e "${green} =============================== ${FONT}"
     sleep 1
 }
 
@@ -106,9 +106,9 @@ function print_error() {
 
 function print_success() {
     if [[ 0 -eq $? ]]; then
-		echo -e "${green} =============================== ${FONT}"
+                echo -e "${green} =============================== ${FONT}"
         echo -e "${Green} # $1 berhasil dipasang"
-		echo -e "${green} =============================== ${FONT}"
+                echo -e "${green} =============================== ${FONT}"
         sleep 2
     fi
 }
@@ -140,6 +140,11 @@ print_install "Membuat direktori xray"
     timedatectl set-timezone Asia/Jakarta
     echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections
     echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections
+    # ===== THEME CONF (YINN STORE) =====
+    mkdir -p /etc/files
+    wget -q -O /etc/files/theme.conf "${REPO}config/theme.conf" || true
+    echo -e "${OK} theme.conf:"
+    cat /etc/files/theme.conf 2>/dev/null || true
     print_success "Directory Xray"
 }
 
@@ -165,7 +170,7 @@ sudo apt-get -y --purge remove bind9* >/dev/null 2>&1
 sudo apt-get -y remove sendmail* >/dev/null 2>&1
 apt autoremove -y >/dev/null 2>&1
 print_success "Packet Yang Dibutuhkan"
-    
+
 }
 clear
 # Fungsi input domain
@@ -340,7 +345,7 @@ clear
     print_install "Core Xray 1.8.1 Latest Version"
     domainSock_dir="/run/xray";! [ -d $domainSock_dir ] && mkdir  $domainSock_dir
     chown www-data:www-data $domainSock_dir
-    
+
     # / / Ambil Xray Core Version Terbaru
 latest_version="$(curl -s https://api.github.com/repos/XTLS/Xray-core/releases | grep tag_name | sed -E 's/.*"v(.*)".*/\1/' | head -n 1)"
 bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u www-data --version 24.10.31
@@ -351,7 +356,7 @@ bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release
     domain=$(cat /etc/xray/domain)
     IPVS=$(cat /etc/xray/ipvps)
     print_success "Core Xray 1.8.1 Latest Version"
-    
+
     clear
     curl -s ipinfo.io/city >>/etc/xray/city
     curl -s ipinfo.io/org | cut -d " " -f 2-10 >>/etc/xray/isp
@@ -359,7 +364,7 @@ bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release
     wget -q -O /etc/nginx/conf.d/xray.conf "${REPO}config/xray.conf"
     sed -i "s/xxx/${domain}/g" /etc/nginx/conf.d/xray.conf
     wget -q -O /etc/nginx/nginx.conf "${REPO}config/nginx.conf"
-    
+
     # > Set Permission
     chmod +x /etc/systemd/system/runn.service
 
@@ -873,43 +878,43 @@ EOF
 mkdir -p /root/.info
 curl -sS "ipinfo.io/org?token=7a814b6263b02c" > /root/.info/.isp
 cat >/etc/cron.d/xp_all <<-END
-		SHELL=/bin/sh
-		PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-		2 0 * * * root /usr/local/sbin/xp
-	END
-	cat >/etc/cron.d/logclean <<-END
-		SHELL=/bin/sh
-		PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-		*/20 * * * * root /usr/local/sbin/clearlog
-		END
+                SHELL=/bin/sh
+                PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+                2 0 * * * root /usr/local/sbin/xp
+        END
+        cat >/etc/cron.d/logclean <<-END
+                SHELL=/bin/sh
+                PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+                */20 * * * * root /usr/local/sbin/clearlog
+                END
     chmod 644 /root/.profile
-	
+        
     cat >/etc/cron.d/daily_reboot <<-END
-		SHELL=/bin/sh
-		PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-		0 5 * * * root /sbin/reboot
-	END
+                SHELL=/bin/sh
+                PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+                0 5 * * * root /sbin/reboot
+        END
     cat >/etc/cron.d/limit_ip <<-END
-		SHELL=/bin/sh
-		PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-		*/2 * * * * root /usr/local/sbin/limit-ip
+                SHELL=/bin/sh
+                PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+                */2 * * * * root /usr/local/sbin/limit-ip
         END
     cat >/etc/cron.d/lim-ip-ssh <<-END
-		SHELL=/bin/sh
-		PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-		*/1 * * * * root /usr/local/sbin/limit-ip-ssh
-	END
+                SHELL=/bin/sh
+                PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+                */1 * * * * root /usr/local/sbin/limit-ip-ssh
+        END
     cat >/etc/cron.d/limit_ip2 <<-END
-		SHELL=/bin/sh
-		PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-		*/2 * * * * root /usr/bin/limit-ip
-	END
+                SHELL=/bin/sh
+                PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+                */2 * * * * root /usr/bin/limit-ip
+        END
     echo "*/1 * * * * root echo -n > /var/log/nginx/access.log" >/etc/cron.d/log.nginx
     echo "*/1 * * * * root echo -n > /var/log/xray/access.log" >>/etc/cron.d/log.xray
     service cron restart
     cat >/home/daily_reboot <<-END
-		5
-	END
+                5
+        END
 curl -sS "ipinfo.io/city?token=7a814b6263b02c" > /root/.info/.city
 cat >/etc/systemd/system/rc-local.service <<EOF
 [Unit]
