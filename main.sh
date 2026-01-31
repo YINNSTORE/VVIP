@@ -706,40 +706,58 @@ wget -O /etc/kyt.txt "${REPO}files/issue.net"
 print_success "Fail2ban"
 }
 
-function ins_epro(){
-clear
-print_install "Menginstall ePro WebSocket Proxy"
+function ins_epro() {
+    clear
+    print_install "Menginstall Protoxoll Go-WebSocket Proxy"
+    
+    # 1. Download Binary & Resources (Dibuang yang nggak perlu)
     wget -q -O /usr/bin/ws "${REPO}files/ws"
-    wget -q -O /usr/bin/tun.conf "${REPO}config/tun.conf"
-    wget -q -O /etc/systemd/system/ws.service "${REPO}files/ws.service"
-    chmod +x /etc/systemd/system/ws.service
+    # tun.conf dibuang karena binary Go kita baca banner langsung dari .txt
+    wget -q -O /usr/local/share/xray/geosite.dat "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat" >/dev/null 2>&1
+    wget -q -O /usr/local/share/xray/geoip.dat "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat" >/dev/null 2>&1
+    wget -q -O /usr/sbin/ftvpn "${REPO}files/ftvpn" >/dev/null 2>&1
+    
+    # 2. Set Permission
     chmod +x /usr/bin/ws
-    chmod 644 /usr/bin/tun.conf
-systemctl disable ws
-systemctl stop ws
-systemctl enable ws
-systemctl start ws
-systemctl restart ws
-wget -q -O /usr/local/share/xray/geosite.dat "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat" >/dev/null 2>&1
-wget -q -O /usr/local/share/xray/geoip.dat "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat" >/dev/null 2>&1
-wget -O /usr/sbin/ftvpn "${REPO}files/ftvpn" >/dev/null 2>&1
-chmod +x /usr/sbin/ftvpn
-iptables -A FORWARD -m string --string "get_peers" --algo bm -j DROP
-iptables -A FORWARD -m string --string "announce_peer" --algo bm -j DROP
-iptables -A FORWARD -m string --string "find_node" --algo bm -j DROP
-iptables -A FORWARD -m string --algo bm --string "BitTorrent" -j DROP
-iptables -A FORWARD -m string --algo bm --string "BitTorrent protocol" -j DROP
-iptables -A FORWARD -m string --algo bm --string "peer_id=" -j DROP
-iptables -A FORWARD -m string --algo bm --string ".torrent" -j DROP
-iptables -A FORWARD -m string --algo bm --string "announce.php?passkey=" -j DROP
-iptables -A FORWARD -m string --algo bm --string "torrent" -j DROP
-iptables -A FORWARD -m string --algo bm --string "announce" -j DROP
-iptables -A FORWARD -m string --algo bm --string "info_hash" -j DROP
-iptables-save > /etc/iptables.up.rules
-iptables-restore -t < /etc/iptables.up.rules
-netfilter-persistent save
-netfilter-persistent reload
+    chmod +x /usr/sbin/ftvpn
 
+    # 3. Setup Banner Sistem (Default Respon)
+    # Pakai format standar agar aman di semua provider/aplikasi
+    echo -ne "HTTP/1.1 101 Switching Protocols[crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf][crlf]" > /etc/protoxoll_banner.txt
+
+    # 4. Buat Service Baru (Sudah benar, tanpa flag -f)
+    cat <<EOF > /etc/systemd/system/ws.service
+[Unit]
+Description=Protoxoll Go-Websocket Service
+After=network.target nss-lookup.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/ws
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # 5. Aktifkan Service (Urutan diperbaiki)
+    systemctl daemon-reload
+    systemctl stop ws >/dev/null 2>&1
+    systemctl enable ws
+    systemctl start ws
+
+    # 6. Iptables Anti-Torrent
+    iptables -A FORWARD -m string --string "get_peers" --algo bm -j DROP
+    iptables -A FORWARD -m string --algo bm --string "BitTorrent" -j DROP
+    iptables-save > /etc/iptables.up.rules
+    
+    # Bersih-bersih
+    apt autoclean -y >/dev/null 2>&1
+    apt autoremove -y >/dev/null 2>&1
+    print_success "ePro WebSocket Proxy (Go Version)"
+}
 # remove unnecessary files
 cd
 apt autoclean -y >/dev/null 2>&1
