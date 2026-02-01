@@ -706,35 +706,33 @@ wget -O /etc/kyt.txt "${REPO}files/issue.net"
 print_success "Fail2ban"
 }
 
-function ins_epro() {
+function ins_epro(){
     clear
-    print_install "Menginstall Protoxoll Go-WebSocket Proxy"
+    print_install "Menginstall Yinn-WS Python Proxy (Stable)"
     
-    # 1. Download Binary & Resources (Dibuang yang nggak perlu)
-    wget -q -O /usr/bin/ws "${REPO}files/ws"
-    # tun.conf dibuang karena binary Go kita baca banner langsung dari .txt
-    wget -q -O /usr/local/share/xray/geosite.dat "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat" >/dev/null 2>&1
-    wget -q -O /usr/local/share/xray/geoip.dat "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat" >/dev/null 2>&1
-    wget -q -O /usr/sbin/ftvpn "${REPO}files/ftvpn" >/dev/null 2>&1
-    
-    # 2. Set Permission
-    chmod +x /usr/bin/ws
-    chmod +x /usr/sbin/ftvpn
+    # --- TAMBAHAN PENGAMAN ---
+    # Matikan service lama agar port 80 kosong, tapi filenya tetap ada
+    systemctl stop ws >/dev/null 2>&1
+    systemctl disable ws >/dev/null 2>&1
+    # Pastikan port 80 benar-benar bersih dari proses bandel
+    fuser -k 80/tcp >/dev/null 2>&1
+    # -------------------------
 
-    # 3. Setup Banner Sistem (Default Respon)
-    # Pakai format standar agar aman di semua provider/aplikasi
-    echo -ne "HTTP/1.1 101 Switching Protocols[crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf][crlf]" > /etc/protoxoll_banner.txt
+    # 1. Download Script Python & Beri Izin
+    wget -q -O /usr/bin/yinn-ws "${REPO}files/ws-python.py"
+    chmod +x /usr/bin/yinn-ws
 
-    # 4. Buat Service Baru (Sudah benar, tanpa flag -f)
-    cat <<EOF > /etc/systemd/system/ws.service
+    echo -ne "HTTP/1.1 101 Switching Protocols[crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf][crlf]" > /etc/yinn_banner.txt
+
+    cat <<EOF > /etc/systemd/system/yinn-ws.service
 [Unit]
-Description=Protoxoll Go-Websocket Service
+Description=Yinn Custom Websocket Service
 After=network.target nss-lookup.target
 
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/bin/ws
+ExecStart=/usr/bin/python3 /usr/bin/yinn-ws
 Restart=on-failure
 RestartSec=3
 
@@ -742,22 +740,37 @@ RestartSec=3
 WantedBy=multi-user.target
 EOF
 
-    # 5. Aktifkan Service (Urutan diperbaiki)
     systemctl daemon-reload
-    systemctl stop ws >/dev/null 2>&1
-    systemctl enable ws
-    systemctl start ws
+    systemctl enable yinn-ws
+    systemctl restart yinn-ws
 
-    # 6. Iptables Anti-Torrent
+    # 5. Keperluan Xray & FTPVPN
+    wget -q -O /usr/local/share/xray/geosite.dat "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat" >/dev/null 2>&1
+    wget -q -O /usr/local/share/xray/geoip.dat "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat" >/dev/null 2>&1
+    wget -O /usr/sbin/ftvpn "${REPO}files/ftvpn" >/dev/null 2>&1
+    chmod +x /usr/sbin/ftvpn
+
+    # 6. Aturan Anti-Torrent
     iptables -A FORWARD -m string --string "get_peers" --algo bm -j DROP
+    iptables -A FORWARD -m string --string "announce_peer" --algo bm -j DROP
+    iptables -A FORWARD -m string --string "find_node" --algo bm -j DROP
     iptables -A FORWARD -m string --algo bm --string "BitTorrent" -j DROP
-    iptables-save > /etc/iptables.up.rules
+    iptables -A FORWARD -m string --algo bm --string "BitTorrent protocol" -j DROP
+    iptables -A FORWARD -m string --algo bm --string "peer_id=" -j DROP
+    iptables -A FORWARD -m string --algo bm --string ".torrent" -j DROP
+    iptables -A FORWARD -m string --algo bm --string "announce.php?passkey=" -j DROP
+    iptables -A FORWARD -m string --algo bm --string "torrent" -j DROP
+    iptables -A FORWARD -m string --algo bm --string "announce" -j DROP
+    iptables -A FORWARD -m string --algo bm --string "info_hash" -j DROP
     
-    # Bersih-bersih
-    apt autoclean -y >/dev/null 2>&1
-    apt autoremove -y >/dev/null 2>&1
-    print_success "ePro WebSocket Proxy (Go Version)"
+    iptables-save > /etc/iptables.up.rules
+    iptables-restore < /etc/iptables.up.rules
+    netfilter-persistent save >/dev/null 2>&1
+    netfilter-persistent reload >/dev/null 2>&1
+
+    print_success "Yinn-WS Proxy Berhasil Dipasang & Service Lama Diamankan"
 }
+
 # remove unnecessary files
 cd
 apt autoclean -y >/dev/null 2>&1
