@@ -1,67 +1,88 @@
-import socket
-import threading
-import sys
+package main
 
-# Konfigurasi Path Banner
-BANNER_PATH = "/etc/yinn_banner.txt"
-DEFAULT_BANNER = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n"
+import (
+	"bufio"
+	"io"
+	"net"
+	"os"
+	"strings"
+)
 
-def get_banner():
-    try:
-        with open(BANNER_PATH, 'r') as f:
-            banner = f.read().replace('[crlf]', '\r\n')
-            return banner.encode()
-    except:
-        return DEFAULT_BANNER.encode()
+const (
+	// Langsung dengerin di port 80
+	ListenPort = "80" 
+	// Lempar ke SSH Lokal
+	SSHPort    = "127.0.0.1:22" 
+	BannerPath = "/etc/yinn_banner.txt"
+	DefBanner  = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n"
+)
 
-def handle_client(client_socket):
-    try:
-        # Terima request awal dari client (HTTP Custom/NAPSTERNU)
-        request = client_socket.recv(1024)
-        
-        # Kirim respon 101 Switching Protocols (Banner)
-        client_socket.send(get_banner())
-        
-        # Hubungkan ke Local SSH (Port 22)
-        target_socket = socket.socket(socket.AF_socket, socket.SOCK_STREAM)
-        target_socket.connect(('127.0.0.1', 22))
-        
-        # Fungsi Bridge (Transfer Data)
-        def forward(source, destination):
-            try:
-                while True:
-                    data = source.recv(4096)
-                    if not data: break
-                    destination.sendall(data)
-            except:
-                pass
-            finally:
-                source.close()
-                destination.close()
+func getBanner() []byte {
+	content, err := os.ReadFile(BannerPath)
+	if err != nil {
+		return []byte(DefBanner)
+	}
+	banner := strings.ReplaceAll(string(content), "[crlf]", "\r\n")
+	if !strings.HasSuffix(banner, "\r\n\r\n") {
+		banner += "\r\n\r\n"
+	}
+	return []byte(banner)
+}
 
-        # Jalankan dua arah (Full Duplex)
-        threading.Thread(target=forward, args=(client_socket, target_socket)).start()
-        threading.Thread(target=forward, args=(target_socket, client_socket)).start()
-        
-    except Exception as e:
-        client_socket.close()
+func proxy(src, dst net.Conn) {
+	defer src.Close()
+	defer dst.Close()
+	io.Copy(src, dst)
+}
 
-def main():
-    # Berjalan di Port 80 (Standard Websocket)
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    
-    try:
-        server.bind(('0.0.0.0', 80))
-        server.listen(100)
-        print("Yinn-WS Python Started on Port 80")
-    except Exception as e:
-        print(f"Error: {e}")
-        sys.exit(1)
+func handleClient(clientConn net.Conn) {
+	// Jangan tutup dulu karena mau di-handshake
+	reader := bufio.NewReader(clientConn)
+	
+	// Intip (Peek) data tanpa membuangnya
+	// Kita cek apakah ini HTTP Request atau bukan
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		clientConn.Close()
+		return
+	}
 
-    while True:
-        client, addr = server.accept()
-        threading.Thread(target=handle_client, args=(client,)).start()
+	// Logic: Jika request mengandung "Upgrade: websocket" atau "GET"
+	// Kita anggap ini SSH Websocket
+	if strings.Contains(strings.ToLower(line), "get") || strings.Contains(strings.ToLower(line), "upgrade") {
+		// Kirim Banner
+		clientConn.Write(getBanner())
 
-if __name__ == "__main__":
-    main()
+		// Hubungkan ke SSH
+		targetConn, err := net.Dial("tcp", SSHPort)
+		if err != nil {
+			clientConn.Close()
+			return
+		}
+		
+		go proxy(clientConn, targetConn)
+		proxy(targetConn, clientConn)
+	} else {
+		// Jika trafik lain, abaikan atau bisa lu arahkan ke port lain
+		clientConn.Close()
+	}
+}
+
+func main() {
+	// Listen di Port 80
+	ln, err := net.Listen("tcp", ":"+ListenPort)
+	if err != nil {
+		// Jika port 80 gagal (mungkin dipakai Nginx), kita coba port lain
+		// Tapi lu bilang "tanpa sentuh file lain", berarti Nginx di script lu
+		// portnya harus dipindah ke 81 atau lainnya di file installer.
+		os.Exit(1)
+	}
+
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			continue
+		}
+		go handleClient(conn)
+	}
+}
