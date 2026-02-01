@@ -272,42 +272,21 @@ clear
 function pasang_ssl() {
 clear
 print_install "Memasang SSL Pada Domain"
-    # Bersihkan file lama
     rm -rf /etc/xray/xray.key
     rm -rf /etc/xray/xray.crt
     domain=$(cat /root/domain)
-
-    # Matikan semua yang pakai port 80 secara paksa
-    systemctl stop nginx
-    systemctl stop ws >/dev/null 2>&1
-    # Kill proses apapun yang masih nempel di port 80 (proteksi tambahan)
-    fuser -k 80/tcp >/dev/null 2>&1 
-
-    # Persiapan acme.sh
+    STOPWEBSERVER=$(lsof -i:80 | cut -d' ' -f1 | awk 'NR==2 {print $1}')
     rm -rf /root/.acme.sh
-    mkdir -p /root/.acme.sh
+    mkdir /root/.acme.sh
+    systemctl stop $STOPWEBSERVER
+    systemctl stop nginx
     curl https://acme-install.netlify.app/acme.sh -o /root/.acme.sh/acme.sh
     chmod +x /root/.acme.sh/acme.sh
-    
-    # Jalankan install & pendaftaran SSL
     /root/.acme.sh/acme.sh --upgrade --auto-upgrade
     /root/.acme.sh/acme.sh --set-default-ca --server letsencrypt
     /root/.acme.sh/acme.sh --issue -d $domain --standalone -k ec-256
-    
-    # Install sertifikat ke folder xray
-    ~/.acme.sh/acme.sh --installcert -d $domain \
-        --fullchainpath /etc/xray/xray.crt \
-        --keypath /etc/xray/xray.key \
-        --ecc
-
-    # Set permission agar bisa dibaca Xray
+    ~/.acme.sh/acme.sh --installcert -d $domain --fullchainpath /etc/xray/xray.crt --keypath /etc/xray/xray.key --ecc
     chmod 777 /etc/xray/xray.key
-    chmod 777 /etc/xray/xray.crt
-    
-    # Jalankan kembali service (Nginx di port 81, WS di port 80)
-    systemctl start nginx
-    systemctl start ws >/dev/null 2>&1
-
     print_success "SSL Certificate"
 }
 
@@ -363,8 +342,8 @@ clear
     chown www-data:www-data $domainSock_dir
     
     # / / Ambil Xray Core Version Terbaru
-    latest_version="$(curl -s https://api.github.com/repos/XTLS/Xray-core/releases | grep tag_name | sed -E 's/.*"v(.*)".*/\1/' | head -n 1)"
-    bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u www-data --version 24.10.31
+latest_version="$(curl -s https://api.github.com/repos/XTLS/Xray-core/releases | grep tag_name | sed -E 's/.*"v(.*)".*/\1/' | head -n 1)"
+bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u www-data --version 24.10.31
 
     # // Ambil Config Server
     wget -q -O /etc/xray/config.json "${REPO}config/config.json"
@@ -377,15 +356,7 @@ clear
     curl -s ipinfo.io/city >>/etc/xray/city
     curl -s ipinfo.io/org | cut -d " " -f 2-10 >>/etc/xray/isp
     print_install "Memasang Konfigurasi Packet"
-    
-    # Ambil Config Nginx
     wget -q -O /etc/nginx/conf.d/xray.conf "${REPO}config/xray.conf"
-    
-    # === TAMBAHAN SED PORT 81 ===
-    sed -i 's/listen 80;/listen 81;/g' /etc/nginx/conf.d/xray.conf
-    sed -i 's/listen [::]:80;/listen [::]:81;/g' /etc/nginx/conf.d/xray.conf
-    # ============================
-    
     sed -i "s/xxx/${domain}/g" /etc/nginx/conf.d/xray.conf
     wget -q -O /etc/nginx/nginx.conf "${REPO}config/nginx.conf"
     
@@ -412,10 +383,11 @@ LimitNOFILE=1000000
 
 [Install]
 WantedBy=multi-user.target
-EOF
 
+EOF
 print_success "Konfigurasi Packet"
 }
+
 
 function ssh(){
 clear
