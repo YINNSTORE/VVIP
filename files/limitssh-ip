@@ -1,46 +1,61 @@
 #!/bin/bash
 
+# Load Bot Data Sekali Saja (Efisiensi CPU)
+CHATID=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 3)
+KEY=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 2)
+URL="https://api.telegram.org/bot$KEY/sendMessage"
+
 function send_log() {
-    CHATID=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 3)
-    KEY=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 2)
-    TIME="10"
-    URL="https://api.telegram.org/bot$KEY/sendMessage"
-    TEXT="
+    local user=$1
+    local iplimit=$2
+    local cekcek=$3
+    local TIME="10"
+    local TEXT="
 <code>────────────────────</code>
-<b>⚠️ NOTIFICATIONS MULTI LOGIN SSH⚠️</b>
+<b>⚠️ NOTIFICATIONS MULTI LOGIN SSH ⚠️</b>
 <code>────────────────────</code>
-<code>Username          : </code><code>$user</code>
-<code>Limit IP            : </code><code>${iplimit}</code>
-<code>User Login         : </code><code>${cekcek}</code>
-<code>Akun Locked       : </code><code>15 Menit</code>
-<code>────────────────────</code>
-"
+<code>Username    : </code><code>$user</code>
+<code>Limit IP    : </code><code>$iplimit</code>
+<code>User Login  : </code><code>$cekcek</code>
+<code>Status      : </code><code>Locked (15 Min)</code>
+<code>────────────────────</code>"
     curl -s --max-time $TIME -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" $URL >/dev/null
 }
 
-clear
+# Pastikan 'at' terinstall, kalau tidak ada, install otomatis
+if ! command -v at &> /dev/null; then
+    apt-get install at -y > /dev/null 2>&1
+    systemctl enable --now atd > /dev/null 2>&1
+fi
 
-mulog=$(cekssh)
-date=$(date)
-data=( `ls /etc/kyt/limit/ssh/ip`)
+# Ambil snapshot login sekaligus (Jauh lebih ringan daripada manggil cekssh berkali-kali)
+# Kita pakai netstat karena lebih cepat dari 'ps' untuk urusan network login
+mulog=$(netstat -tnpa | grep -E 'sshd|dropbear' | grep ESTABLISHED)
 
-for user in "${data[@]}"
-do
-    iplimit=$(cat /etc/kyt/limit/ssh/ip/$user)
-    cekcek=$(echo -e "$mulog" | grep $user | wc -l)
+# Ambil daftar user yang memiliki setting limit
+if [ -d "/etc/kyt/limit/ssh/ip" ]; then
+    data=( $(ls /etc/kyt/limit/ssh/ip) )
+else
+    exit 0
+fi
+
+for user in "${data[@]}"; do
+    iplimit=$(cat "/etc/kyt/limit/ssh/ip/$user")
+    # Cek jumlah login user dari snapshot memori
+    cekcek=$(echo "$mulog" | grep -w "$user" | wc -l)
 
     if [[ $cekcek -gt $iplimit ]]; then
-        nais=3
-        passwd -l "$user" > /dev/null
-        send_log
+        # Kunci Akun
+        passwd -l "$user" > /dev/null 2>&1
+        # Tendang user yang sedang login saat ini
+        pkill -u "$user" > /dev/null 2>&1
+        
+        # Kirim Log
+        send_log "$user" "$iplimit" "$cekcek"
 
-        # Jadwalkan untuk membuka kembali akun setelah 15 menit
-        echo "passwd -u $user" | at now + 15 minutes > /dev/null
-    else
-        echo > /dev/null
+        # Jadwalkan Unlock 15 Menit (Pastikan service atd jalan)
+        echo "passwd -u $user" | at now + 15 minutes > /dev/null 2>&1
     fi
-
-    sleep 0.1
+    # Sleep tipis agar tidak menghajar CPU jika user sangat banyak
+    sleep 0.2
 done
-
-echo > /dev/null
