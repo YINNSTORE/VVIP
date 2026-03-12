@@ -1,104 +1,77 @@
 #!/bin/bash
 
-function send_log(){
+# Load Bot Data sekali saja di awal
 CHATID=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 3)
 KEY=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 2)
-TIME="10"
 URL="https://api.telegram.org/bot$KEY/sendMessage"
-TEXT="
+
+function send_log(){
+    local user=$1
+    local iplimit=$2
+    local TIME="10"
+    local TEXT="
 <code>────────────────────</code>
 <b>⚠️ NOTIFICATIONS MULTI LOGIN ⚠️</b>
 <code>────────────────────</code>
 <code>Username  : </code><code>$user</code>
-<code>Limit Ip    : </code><code>$iplimit</code>
-<code>────────────────────</code>
-"
-curl -s --max-time $TIME -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" $URL >/dev/null
+<code>Limit Ip  : </code><code>$iplimit</code>
+<code>Action    : </code><code>User Deleted</code>
+<code>────────────────────</code>"
+    curl -s --max-time $TIME -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" $URL >/dev/null
 }
-function vmip(){
-#LIMITVMESSIP
-echo -n > /var/log/xray/access.log
-sleep 1
-data=( `ls /etc/kyt/limit/vmess/ip`);
-#Decrypted By YADDY D PHREAKER
-    for user in "${data[@]}"
-    do
-        iplimit=$(cat /etc/kyt/limit/vmess/ip/$user)
-        ehh=$(cat /var/log/xray/access.log | grep "$user" | cut -d " " -f 3 | sed 's/tcp://g' | cut -d ":" -f 1 | sort | uniq);
-        cekcek=$(echo -e "$ehh" | wc -l);
+
+# Variable untuk cek apakah butuh restart xray
+NEED_RESTART=0
+LOG_FILE="/var/log/xray/access.log"
+
+function process_limit() {
+    local type=$1 # vmess, vless, atau trojan
+    local prefix=$2 # ###, #&, atau #!
+    local db_file=$3
+    
+    if [ ! -d "/etc/kyt/limit/$type/ip" ]; then return; fi
+    
+    # Ambil snapshot log agar tidak berubah saat proses
+    local log_content=$(cat "$LOG_FILE")
+    
+    data=( $(ls "/etc/kyt/limit/$type/ip") )
+    for user in "${data[@]}"; do
+        iplimit=$(cat "/etc/kyt/limit/$type/ip/$user")
+        # Grep langsung dari snapshot memori (jauh lebih cepat)
+        cekcek=$(echo "$log_content" | grep -w "$user" | cut -d " " -f 3 | sed 's/tcp://g' | cut -d ":" -f 1 | sort | uniq | wc -l)
+        
         if [[ $cekcek -gt $iplimit ]]; then
-            exp=$(grep -w "^### $user" "/etc/xray/config.json" | cut -d ' ' -f 3 | sort | uniq)
-                  sed -i "/^### $user $exp/,/^},{/d" /etc/xray/config.json
-                  sed -i "/^### $user $exp/d" /etc/vmess/.vmess.db
-                  systemctl restart xray >> /dev/null 2>&1
-                  jum2=$(cat /tmp/ipvmess.txt | wc -l)
-                  rm -rf /etc/kyt/limit/vmess/ip/$user
-                  send_log
-                else
-            echo ""
-        fi
-        sleep 0.1
-    done
-}
-function vlip(){
-#LIMITVLESSIP
-echo -n > /var/log/xray/access.log
-sleep 1
-data=( `ls /etc/kyt/limit/vless/ip`);
-#Decrypted By YADDY D PHREAKER
-    for user in "${data[@]}"
-    do
-        iplimit=$(cat /etc/kyt/limit/vless/ip/$user)
-        ehh=$(cat /var/log/xray/access.log | grep "$user" | cut -d " " -f 3 | sed 's/tcp://g' | cut -d ":" -f 1 | sort | uniq);
-        cekcek=$(echo -e "$ehh" | wc -l);
-        if [[ $cekcek -gt $iplimit ]]; then
-            exp=$(grep -w "^#& $user" "/etc/xray/config.json" | cut -d ' ' -f 3 | sort | uniq)
-                  sed -i "/^#& $user $exp/,/^},{/d" /etc/xray/config.json
-                  sed -i "/^### $user $exp/d" /etc/vless/.vless.db
-                  systemctl restart xray >> /dev/null 2>&1
-                  jum2=$(cat /tmp/ipvless.txt | wc -l)
-                  rm -rf /etc/kyt/limit/vless/ip/$user
-                  send_log
-                else
-            echo ""
-        fi
-        sleep 0.1
-    done
-}
-function trip(){
-#LIMITIPTROJAN
-echo -n > /var/log/xray/access.log
-sleep 1
-data=( `ls /etc/kyt/limit/trojan/ip`);
-#Decrypted By YADDY D PHREAKER
-    for user in "${data[@]}"
-    do
-        iplimit=$(cat /etc/kyt/limit/trojan/ip/$user)
-        ehh=$(cat /var/log/xray/access.log | grep "$user" | cut -d " " -f 3 | sed 's/tcp://g' | cut -d ":" -f 1 | sort | uniq);
-        cekcek=$(echo -e "$ehh" | wc -l);
-        if [[ $cekcek -gt $iplimit ]]; then
-            exp=$(grep -w "^#! $user" "/etc/xray/config.json" | cut -d ' ' -f 3 | sort | uniq)
-                  sed -i "/^#! $user $exp/,/^},{/d" /etc/xray/config.json
-                  sed -i "/^### $user $exp/d" /etc/trojan/.trojan.db
-                  systemctl restart xray >> /dev/null 2>&1
-                  jum2=$(cat /tmp/iptrojan.txt | wc -l)
-                  rm -rf /etc/kyt/limit/trojan/ip/$user
-                  send_log
-                else
-            echo ""
+            exp=$(grep -w "^$prefix $user" "/etc/xray/config.json" | cut -d ' ' -f 3 | head -n1)
+            if [ ! -z "$exp" ]; then
+                # Hapus user dari config
+                sed -i "/^$prefix $user $exp/,/^},{/d" /etc/xray/config.json
+                sed -i "/^$prefix $user $exp/d" "$db_file"
+                rm -rf "/etc/kyt/limit/$type/ip/$user"
+                
+                send_log "$user" "$iplimit"
+                NEED_RESTART=1
+            fi
         fi
         sleep 0.1
     done
 }
 
-if [[ ${1} == "vmip" ]]; then
-vmip
-elif [[ ${1} == "vlip" ]]; then
-vlip
-elif [[ ${1} == "trip" ]]; then
-trip
+# Main Logic
+case "${1}" in
+    vmip)
+        process_limit "vmess" "###" "/etc/vmess/.vmess.db"
+        ;;
+    vlip)
+        process_limit "vless" "#&" "/etc/vless/.vless.db"
+        ;;
+    trip)
+        process_limit "trojan" "#!" "/etc/trojan/.trojan.db"
+        ;;
+esac
+
+# Restart Xray HANYA SEKALI jika ada perubahan
+if [[ $NEED_RESTART -eq 1 ]]; then
+    systemctl restart xray
+    # Kosongkan log HANYA setelah restart agar fresh
+    echo -n > "$LOG_FILE"
 fi
-
-
-
-
