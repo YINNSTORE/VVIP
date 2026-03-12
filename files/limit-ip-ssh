@@ -1,121 +1,63 @@
 #!/bin/bash
 
-clear
-function send-log(){
+# Load Bot Config Sekali Saja
 CHATID=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 3)
 KEY=$(grep -E "^#bot# " "/etc/bot/.bot.db" | cut -d ' ' -f 2)
-TIME="10"
 URL="https://api.telegram.org/bot$KEY/sendMessage"
-TEXT="
-<code>☉────────────────────☉</code>
-Notifikasi Multilogin SSH
-<code>☉────────────────────☉</code>
-<code>Username :</code> <code>$1</code>
-<code>Limit IP :</code> <code>$2</code>
-<code>Login IP :</code> <code>$3</code>
-<code>☉────────────────────☉</code>"
 
-curl -s --max-time $TIME -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" $URL >/dev/null
+function send-log(){
+    local user=$1
+    local limit=$2
+    local login=$3
+    local TEXT="
+<code>☉────────────────────☉</code>
+<b>⚠️ MULTILOGIN SSH DETECTED ⚠️</b>
+<code>☉────────────────────☉</code>
+<code>Username :</code> <code>$user</code>
+<code>Limit IP :</code> <code>$limit</code>
+<code>Login IP :</code> <code>$login</code>
+<code>Action   :</code> <code>User Locked</code>
+<code>☉────────────────────☉</code>"
+    curl -s --max-time 10 -d "chat_id=$CHATID&disable_web_page_preview=1&text=$TEXT&parse_mode=html" $URL >/dev/null
 }
 
-# Menentukan file log berdasarkan OS yang digunakan
-if [ -e "/var/log/auth.log" ]; then
-    OS=1;
-    LOG="/var/log/auth.log";
-elif [ -e "/var/log/secure" ]; then
-    OS=2;
-    LOG="/var/log/secure";
-else
-    echo "Log file tidak ditemukan.";
-    exit 1;
-fi
+# Tentukan Log
+[ -f /var/log/auth.log ] && LOG="/var/log/auth.log" || LOG="/var/log/secure"
+if [ ! -f "$LOG" ]; then exit 1; fi
 
-# Mendapatkan daftar pengguna yang akan dihapus
-cat /etc/passwd | grep "/home/" | cut -d":" -f1 > /root/user.txt
-username1=( `cat "/root/user.txt" `);
-i="0";
-for user in "${username1[@]}"
-do
-    username[$i]=`echo $user | sed 's/'\''//g'`;
-    jumlah[$i]=0;
-    i=$i+1;
-done
+# Ambil snapshot data login SSH & Dropbear sekaligus (Efisien)
+# Menggunakan netstat/ss jauh lebih akurat daripada grep log lama
+login_data=$(netstat -tnpa | grep -E 'sshd|dropbear' | grep ESTABLISHED)
 
-# Mengambil informasi pengguna dari file log
-cat $LOG | grep -i dropbear | grep -i "Password auth succeeded" > /tmp/log-db.txt
-proc=( `ps aux | grep -i dropbear | awk '{print $2}'`);
-for PID in "${proc[@]}"
-do
-    cat /tmp/log-db.txt | grep "dropbear\[$PID\]" > /tmp/log-db-pid.txt
-    NUM=`cat /tmp/log-db-pid.txt | wc -l`;
-    USER=`cat /tmp/log-db-pid.txt | awk '{print $10}' | sed 's/'\''//g'`;
-    IP=`cat /tmp/log-db-pid.txt | awk '{print $12}'`;
-    if [ $NUM -eq 1 ]; then
-        i=0;
-        for user1 in "${username[@]}"
-        do
-            if [ "$USER" == "$user1" ]; then
-                jumlah[$i]=`expr ${jumlah[$i]} + 1`;
-                pid[$i]="${pid[$i]} $PID"
-            fi
-            i=$i+1;
-        done
-    fi
-done
+# Ambil daftar user yang punya setting limit
+users=$(ls /etc/kyt/limit/ssh/ip/)
 
-cat $LOG | grep -i sshd | grep -i "Accepted password for" > /tmp/log-db.txt
-data=( `ps aux | grep "\[priv\]" | sort -k 72 | awk '{print $2}'`);
-for PID in "${data[@]}"
-do
-    cat /tmp/log-db.txt | grep "sshd\[$PID\]" > /tmp/log-db-pid.txt;
-    NUM=`cat /tmp/log-db-pid.txt | wc -l`;
-    USER=`cat /tmp/log-db-pid.txt | awk '{print $9}'`;
-    IP=`cat /tmp/log-db-pid.txt | awk '{print $11}'`;
-    if [ $NUM -eq 1 ]; then
-        i=0;
-        for user1 in "${username[@]}"
-        do
-            if [ "$USER" == "$user1" ]; then
-                jumlah[$i]=`expr ${jumlah[$i]} + 1`;
-                pid[$i]="${pid[$i]} $PID"
-            fi
-            i=$((i + 1));
-        done
-    fi
-done
+locked_any=0
 
-# Mengunci pengguna yang melampaui batas jumlah login
-j="0";
-for i in ${!username[*]}
-do
-    MAX=$(cat /etc/kyt/limit/ssh/ip/${username[$i]});
-    # Menetapkan nilai default ke 999 jika nilai tidak valid atau tidak ada
-    if ! [[ $MAX =~ ^[0-9]+$ ]]; then
-        MAX=999
-    fi
-    if [ ${jumlah[$i]} -gt $MAX ]; then
-        date=$(date +"%Y-%m-%d %X");
-        echo "$date - ${username[$i]} - ${jumlah[$i]}";
+for user in $users; do
+    MAX=$(cat /etc/kyt/limit/ssh/ip/$user)
+    [[ $MAX =~ ^[0-9]+$ ]] || MAX=999
+    
+    # Hitung jumlah login user tersebut dari snapshot data (Sangat Cepat)
+    # Mencari username di kolom terakhir netstat
+    count=$(echo "$login_data" | grep -w "$user" | wc -l)
+    
+    if [ "$count" -gt "$MAX" ] && [ "$MAX" -ne 0 ]; then
+        echo "$(date) - Locking $user ($count/$MAX)"
         
-        # Mengunci pengguna multilogin
-        passwd -l ${username[$i]};
-        send-log "${username[$i]}" "$MAX" "${jumlah[$i]}"
-
-        if [ $OS -eq 1 ]; then
-            service ssh restart > /dev/null 2>&1;
-        elif [ $OS -eq 2 ]; then
-            service sshd restart > /dev/null 2>&1;
-        fi
+        # Lock user agar tidak bisa login lagi
+        passwd -l "$user"
         
-        # Membersihkan variabel yang digunakan
-        jumlah[$i]=0;
-        pid[$i]="";
-        j=$((j + 1));
+        # Kill semua proses milik user tersebut agar koneksi terputus
+        pkill -u "$user"
+        
+        send-log "$user" "$MAX" "$count"
+        locked_any=1
     fi
-    sleep 5
 done
 
-if [ $j -gt 0 ]; then
-    service dropbear restart > /dev/null 2>&1;
+# Restart service hanya sekali jika ada yang di-lock
+if [ "$locked_any" -eq 1 ]; then
+    systemctl restart ssh >/dev/null 2>&1
+    systemctl restart dropbear >/dev/null 2>&1
 fi
-sleep 60
