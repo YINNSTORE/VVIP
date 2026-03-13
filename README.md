@@ -10,7 +10,7 @@ apt install -y && apt update -y && apt upgrade -y && wget -q https://raw.githubu
 
 ### UDP
 ```
-wget https://raw.githubusercontent.com/Azigaming404/Autoscript-by-azi/main/udp/udp-custom.sh && chmod +x udp-custom.sh && ./udp-custom.sh
+wget https://raw.githubusercontent.com/YINNSTORE/VVIP/main/udp-custom.sh && chmod +x udp-custom.sh && ./udp-custom.sh
 ```
 
 ### WORK DI OS
